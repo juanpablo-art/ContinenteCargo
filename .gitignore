@@ -1,0 +1,22 @@
+# Xcode user-specific
+xcuserdata/
+*.xcscmblueprint
+*.xccheckout
+
+# Build products
+build/
+DerivedData/
+*.moved-aside
+*.pbxuser
+
+# SPM
+.build/
+SourcePackages/
+
+# macOS
+.DS_Store
+
+# Secrets — never commit
+GoogleService-Info.plist
+*.env
+Secrets.swift
