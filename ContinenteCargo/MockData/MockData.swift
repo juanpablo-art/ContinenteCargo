@@ -109,6 +109,14 @@ enum MockData {
             ShipmentDocument(name: "Packing list", date: days(-8)),
             ShipmentDocument(name: "Certificado de origen", date: days(-7))
         ]
+        let sampleInvoices = [
+            InvoiceDocument(id: 1, folio: "FAC-2026-00841",
+                            xmlPath: "Shipping/21119/Invoices/FAC-2026-00841.xml",
+                            pdfPath: "Shipping/21119/Invoices/FAC-2026-00841.pdf"),
+            InvoiceDocument(id: 2, folio: "FAC-2026-00842",
+                            xmlPath: "Shipping/21119/Invoices/FAC-2026-00842.xml",
+                            pdfPath: "Shipping/21119/Invoices/FAC-2026-00842.pdf")
+        ]
         let sampleCharges = [
             Charge(concept: "Flete marítimo", amount: 2450, currency: "USD"),
             Charge(concept: "THC destino", amount: 320, currency: "USD"),
@@ -181,6 +189,7 @@ enum MockData {
                 isInsured: index % 4 != 2,
                 timeline: timeline(for: status, origin: r.0, destination: r.2, seed: index),
                 documents: sampleDocs,
+                invoiceDocuments: index % 3 == 0 ? sampleInvoices : [],
                 incidents: incidents,
                 charges: sampleCharges,
                 freeDaysTotal: freeTotal,

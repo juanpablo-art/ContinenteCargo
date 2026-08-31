@@ -18,6 +18,12 @@ struct AlertsView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: CCSpacing.md) {
+                    Text("Alertas")
+                        .font(.largeTitle.weight(.bold))
+                        .foregroundStyle(Color.black)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, CCSpacing.xs)
+
                     filterBar
 
                     if viewModel.isLoading {
@@ -49,16 +55,19 @@ struct AlertsView: View {
             }
             .background(CCColor.surface.ignoresSafeArea())
             .navigationTitle("Alertas")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(CCColor.surface, for: .navigationBar, .tabBar)
+            .toolbarBackground(.visible, for: .navigationBar, .tabBar)
+            .toolbarColorScheme(.light, for: .navigationBar, .tabBar)
+            .searchable(text: $vm.searchText,
+                        placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: "Folio, contenedor, origen o destino")
             .navigationDestination(for: Int.self) { shippingId in
                 ShipmentDetailLoaderView(shippingId: shippingId)
             }
             .navigationDestination(for: Shipment.self) { shipment in
                 ShipmentDetailView(shipment: shipment)
             }
-            .searchable(text: $vm.searchText,
-                        placement: .navigationBarDrawer(displayMode: .always),
-                        prompt: "Folio, contenedor, origen o destino")
             .onChange(of: viewModel.searchText) { _, _ in viewModel.onSearchChanged() }
             .task(id: session.authSession?.idToken) {
                 await viewModel.load(idToken: session.authSession?.idToken, clientID: session.clientID)

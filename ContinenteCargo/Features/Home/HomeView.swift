@@ -38,6 +38,9 @@ struct HomeView: View {
             }
             .background(CCColor.surface.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(CCColor.surface, for: .navigationBar, .tabBar)
+            .toolbarBackground(.visible, for: .navigationBar, .tabBar)
+            .toolbarColorScheme(.light, for: .navigationBar, .tabBar)
             .toolbar { toolbarContent }
             .navigationDestination(for: Shipment.self) { shipment in
                 ShipmentDetailView(shipment: shipment)
@@ -291,21 +294,23 @@ struct HomeView: View {
             Button {
                 session.selectedTab = .alerts
             } label: {
-                Image(systemName: "bell")
-                    .font(.system(size: 19, weight: .medium))
-                    .foregroundStyle(CCColor.textPrimary)
-                    .overlay(alignment: .topTrailing) {
-                        if viewModel.criticalCount > 0 {
-                            Text("\(viewModel.criticalCount)")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 15, height: 15)
-                                .background(CCColor.red)
-                                .clipShape(Circle())
-                                .offset(x: 7, y: -6)
-                        }
+                ZStack(alignment: .topTrailing) {
+                    Color.clear.frame(width: 34, height: 34)
+                    Image(systemName: "bell")
+                        .font(.system(size: 19, weight: .medium))
+                        .foregroundStyle(CCColor.textPrimary)
+                        .frame(width: 34, height: 34, alignment: .center)
+                    if viewModel.criticalCount > 0 {
+                        Text("\(viewModel.criticalCount)")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 15, height: 15)
+                            .background(CCColor.red)
+                            .clipShape(Circle())
                     }
+                }
             }
+            .buttonStyle(.plain)
         }
 
         // Avatar menu with sign-out.
@@ -322,6 +327,7 @@ struct HomeView: View {
                     .background(CCColor.navy)
                     .clipShape(Circle())
             }
+            .buttonStyle(.plain)
         }
     }
 

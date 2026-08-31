@@ -19,8 +19,14 @@ final class ShipmentDetailViewModel {
     private(set) var isLoadingPolicy = false
     /// ID of the document currently being fetched, to show its row spinner.
     private(set) var loadingDocumentID: UUID?
+    /// ID of the invoice currently being fetched.
+    private(set) var loadingInvoiceID: Int?
+    /// Which file (pdf/xml) is loading within the invoice row.
+    private(set) var loadingInvoiceFileType: InvoiceFileType?
     /// Non-nil when the last document download failed.
     private(set) var documentError: String?
+
+    enum InvoiceFileType { case pdf, xml }
     /// Auth token, injected from the view so document downloads are authenticated.
     var idToken: String?
 
@@ -101,17 +107,74 @@ final class ShipmentDetailViewModel {
 
     func clearDocumentError() { documentError = nil }
 
+    /// Downloads both PDF and XML for an invoice concurrently and opens Quick Look
+    /// starting at the tapped file — the user can swipe to the other.
+    func showInvoice(_ invoice: InvoiceDocument, fileType: InvoiceFileType) async {
+        guard loadingInvoiceID == nil else { return }
+        loadingInvoiceID = invoice.id
+        loadingInvoiceFileType = fileType
+        defer {
+            loadingInvoiceID = nil
+            loadingInvoiceFileType = nil
+        }
+        documentError = nil
+
+        // Download both files concurrently; order: [PDF, XML]
+        let files: [(path: String, ext: String)] = [
+            (invoice.pdfPath, "pdf"),
+            (invoice.xmlPath, "xml")
+        ]
+
+        var resolved: [Int: URL] = [:]
+        await withTaskGroup(of: (Int, URL?).self) { group in
+            for (index, file) in files.enumerated() {
+                group.addTask { [self] in
+                    let fileName = "\(invoice.folio).\(file.ext)"
+                    let url = try? await self.resolveInvoicePath(file.path, fileName: fileName)
+                    return (index, url)
+                }
+            }
+            for await (index, url) in group {
+                if let url { resolved[index] = url }
+            }
+        }
+
+        let orderedURLs = files.indices.compactMap { resolved[$0] }
+        guard !orderedURLs.isEmpty else {
+            documentError = "No se pudo abrir el archivo. Verifica tu conexión e intenta de nuevo."
+            return
+        }
+
+        previewDocumentURLs = orderedURLs
+        // Open at the tapped file type
+        let tappedIndex = fileType == .pdf ? 0 : 1
+        previewSelectedURL = resolved[tappedIndex] ?? orderedURLs.first
+    }
+
+    private func resolveInvoicePath(_ path: String, fileName: String) async throws -> URL {
+        guard !path.isEmpty else { throw URLError(.badURL) }
+        if let directURL = URL(string: path), directURL.scheme?.hasPrefix("http") == true {
+            return try await Self.download(from: directURL, fileName: fileName)
+        }
+        let signedURL = try await downloadService.fetchDocumentDownloadURL(path: path, idToken: idToken)
+        return try await Self.download(from: signedURL, fileName: fileName)
+    }
+
     // MARK: - Download
 
     /// Resolves a single document to a local file URL.
     private func resolve(_ document: ShipmentDocument) async throws -> URL {
-        if let path = document.s3Path, !path.isEmpty {
-            let signedURL = try await downloadService.fetchDocumentDownloadURL(
-                path: path, idToken: idToken)
-            return try await Self.download(from: signedURL, fileName: document.displayFileName)
-        } else {
+        guard let path = document.s3Path, !path.isEmpty else {
             return try await service.fetchDocumentFile(for: document, of: shipment)
         }
+        // If the path is already a full URL (pre-signed by the server), use it directly.
+        if let directURL = URL(string: path), directURL.scheme?.hasPrefix("http") == true {
+            return try await Self.download(from: directURL, fileName: document.displayFileName)
+        }
+        // Otherwise request a short-lived signed URL from the API.
+        let signedURL = try await downloadService.fetchDocumentDownloadURL(
+            path: path, idToken: idToken)
+        return try await Self.download(from: signedURL, fileName: document.displayFileName)
     }
 
     private nonisolated static func download(from url: URL, fileName: String) async throws -> URL {

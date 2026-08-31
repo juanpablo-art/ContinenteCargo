@@ -42,10 +42,12 @@ struct Shipment: Identifiable, Hashable {
     // Detail sections
     var timeline: [TrackingEvent]
     var documents: [ShipmentDocument]
+    var invoiceDocuments: [InvoiceDocument]
     var incidents: [Incident]
     var charges: [Charge]
     var freeDaysTotal: Int
     var freeDaysRemaining: Int
+    var freeDaysStartDate: Date?
 
     /// Route summary, e.g. "MXZLO → USLAX".
     var routeCodes: String { "\(originCode) → \(destinationCode)" }
@@ -78,10 +80,12 @@ struct Shipment: Identifiable, Hashable {
         isInsured: Bool = true,
         timeline: [TrackingEvent] = [],
         documents: [ShipmentDocument] = [],
+        invoiceDocuments: [InvoiceDocument] = [],
         incidents: [Incident] = [],
         charges: [Charge] = [],
         freeDaysTotal: Int = 0,
-        freeDaysRemaining: Int = 0
+        freeDaysRemaining: Int = 0,
+        freeDaysStartDate: Date? = nil
     ) {
         self.id = id
         self.shippingId = shippingId
@@ -103,10 +107,12 @@ struct Shipment: Identifiable, Hashable {
         self.isInsured = isInsured
         self.timeline = timeline
         self.documents = documents
+        self.invoiceDocuments = invoiceDocuments
         self.incidents = incidents
         self.charges = charges
         self.freeDaysTotal = freeDaysTotal
         self.freeDaysRemaining = freeDaysRemaining
+        self.freeDaysStartDate = freeDaysStartDate
     }
 }
 
@@ -158,6 +164,17 @@ struct ShipmentDocument: Identifiable, Hashable {
         let dotExt = ".\(ext)"
         return name.hasSuffix(dotExt) ? name : name + dotExt
     }
+}
+
+/// A fiscal invoice (factura) with both PDF and XML files attached to a shipment.
+struct InvoiceDocument: Identifiable, Hashable {
+    let id: Int
+    /// Folio number / filename shown in the UI.
+    let folio: String
+    /// S3 path for the XML file.
+    let xmlPath: String
+    /// S3 path for the PDF file.
+    let pdfPath: String
 }
 
 /// A logged incident on the shipment.

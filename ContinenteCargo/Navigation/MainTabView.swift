@@ -40,6 +40,9 @@ struct MainTabView: View {
             .badge(homeViewModel.criticalCount)
         }
         .tint(CCColor.actionBlue)
+        .toolbarBackground(CCColor.surface, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarColorScheme(.light, for: .tabBar)
     }
 }
 

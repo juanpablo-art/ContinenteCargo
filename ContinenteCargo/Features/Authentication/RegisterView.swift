@@ -2,9 +2,8 @@
 //  RegisterView.swift
 //  ContinenteCargo
 //
-//  Account creation sheet, presented from the login screen.
-//  Mirrors the login's flat corporate style: labeled fields,
-//  pill action button and security footer.
+//  Formulario de solicitud de acceso. Solo recopila datos del usuario;
+//  la empresa activa la cuenta manualmente.
 //
 
 import SwiftUI
@@ -12,7 +11,8 @@ import SwiftUI
 struct RegisterView: View {
     @Environment(AppSession.self) private var session
     @Environment(\.dismiss) private var dismiss
-    @State private var viewModel = RegisterViewModel(authService: FirebaseAuthService.shared)
+    @State private var viewModel = RegisterViewModel()
+    @State private var showSuccessAlert = false
 
     var body: some View {
         @Bindable var vm = viewModel
@@ -37,32 +37,24 @@ struct RegisterView: View {
                                 textContentType: .username)
                 }
 
-                labeledField(label: "Contraseña") {
-                    CCTextField(title: "Mínimo 6 caracteres",
-                                systemImage: "lock",
-                                text: $vm.password,
-                                isSecure: true,
-                                textContentType: .newPassword)
-                }
-
-                labeledField(label: "Confirmar contraseña") {
-                    CCTextField(title: "Repite tu contraseña",
-                                systemImage: "lock",
-                                text: $vm.confirmPassword,
-                                isSecure: true,
-                                textContentType: .newPassword)
+                labeledField(label: "Teléfono") {
+                    CCTextField(title: "Número de teléfono",
+                                systemImage: "phone",
+                                text: $vm.phone,
+                                keyboard: .phonePad,
+                                textContentType: .telephoneNumber)
                 }
 
                 if let message = viewModel.errorMessage {
                     errorBanner(message)
                 }
 
-                PrimaryButton(title: "Crear cuenta",
+                PrimaryButton(title: "Solicitar acceso",
                               trailingSystemImage: "arrow.right",
                               isLoading: viewModel.isLoading,
                               isEnabled: viewModel.canSubmit,
                               cornerRadius: CCRadius.pill) {
-                    signUp()
+                    requestAccess()
                 }
 
                 signInRow
@@ -84,15 +76,19 @@ struct RegisterView: View {
         .overlay(alignment: .topTrailing) {
             closeButton
         }
+        .alert("¡Solicitud enviada!", isPresented: $showSuccessAlert) {
+            Button("Aceptar") { dismiss() }
+        } message: {
+            Text("Gracias por registrarte. En seguida un ejecutivo se pondrá en contacto contigo.")
+        }
     }
 
     // MARK: - Actions
 
-    private func signUp() {
+    private func requestAccess() {
         Task {
-            await viewModel.signUp { auth in
-                dismiss()
-                session.signIn(auth: auth)
+            await viewModel.requestAccess {
+                showSuccessAlert = true
             }
         }
     }

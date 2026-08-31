@@ -24,8 +24,11 @@ final class AppSession {
     /// APNs device token received from the OS after push registration.
     var deviceToken: String?
 
-    /// Backend client ID linked to the authenticated user.
-    var clientID: Int? = 1411
+    /// Backend client ID — resolved by the backend from the auth token.
+    var clientID: Int? = nil
+
+    /// Shipment ID received via push notification tap. Consumed by ShipmentsView to trigger navigation.
+    var deepLinkShipmentID: Int? = nil
 
     /// Currently selected bottom tab. Lives here so any screen
     /// (e.g. Home's bell or "Ver todas") can switch tabs.

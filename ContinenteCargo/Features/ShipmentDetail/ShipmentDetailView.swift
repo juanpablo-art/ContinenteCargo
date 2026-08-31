@@ -30,7 +30,7 @@ var body: some View {
                 if !shipment.timeline.isEmpty { timelineSection }
                 if !shipment.incidents.isEmpty { incidentsSection }
                 if !shipment.documents.isEmpty { documentsSection }
-                if shipment.charges.contains(where: { $0.amount != 0 }) { chargesSection }
+                if !shipment.invoiceDocuments.isEmpty { invoicesSection }
                 if shipment.freeDaysTotal > 0 { freeDaysSection }
             }
             .padding(CCSpacing.lg)
@@ -38,6 +38,9 @@ var body: some View {
         .background(CCColor.surface.ignoresSafeArea())
         .navigationTitle(shipment.reference)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(CCColor.surface, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(.light, for: .navigationBar)
         .task { viewModel.idToken = session.authSession?.idToken }
         .quickLookPreview($viewModel.previewSelectedURL, in: viewModel.previewDocumentURLs)
         .alert("No se pudo abrir el documento",
@@ -283,23 +286,35 @@ var body: some View {
                         Task { await viewModel.showDocument(doc, in: docs) }
                     } label: {
                         HStack(spacing: CCSpacing.md) {
+                            // Icon badge
                             Image(systemName: icon)
-                                .foregroundStyle(CCColor.actionBlue)
-                                .frame(width: 26)
-                            VStack(alignment: .leading, spacing: 1) {
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(icon == "shield.fill" ? CCColor.green : CCColor.actionBlue)
+                                .frame(width: 34, height: 34)
+                                .background((icon == "shield.fill" ? CCColor.green : CCColor.actionBlue).opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                            // Name + date or extension
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(doc.name)
-                                    .font(.subheadline.weight(.medium))
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(CCColor.textPrimary)
+                                    .lineLimit(1)
                                 if let date = doc.date {
                                     Text(CCFormat.date(date))
-                                        .font(.caption2)
-                                        .foregroundStyle(CCColor.textTertiary)
+                                        .font(.caption)
+                                        .foregroundStyle(CCColor.textSecondary)
+                                } else if let ext = doc.fileExtension, !ext.isEmpty {
+                                    Text(ext.uppercased())
+                                        .font(.caption)
+                                        .foregroundStyle(CCColor.textSecondary)
                                 }
                             }
-                            Spacer()
+
+                            Spacer(minLength: CCSpacing.sm)
+
                             if viewModel.loadingDocumentID == doc.id {
-                                ProgressView()
-                                    .controlSize(.small)
+                                ProgressView().controlSize(.small)
                             } else {
                                 Image(systemName: "chevron.right")
                                     .font(.caption.weight(.semibold))
@@ -324,28 +339,50 @@ var body: some View {
         }
     }
 
-    // MARK: - Charges
+    // MARK: - Invoices
 
-    private var chargesSection: some View {
+    private var invoicesSection: some View {
         VStack(alignment: .leading, spacing: CCSpacing.md) {
-            SectionHeader(title: "Cargos")
+            SectionHeader(title: "Facturas")
             VStack(spacing: 0) {
-                ForEach(Array(shipment.charges.enumerated()), id: \.element.id) { index, charge in
-                    HStack {
-                        Text(charge.concept)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(CCColor.textPrimary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Spacer()
-                        Text(charge.formattedAmount)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(CCColor.textPrimary)
-                            .lineLimit(1)
-                            .fixedSize()
+                ForEach(Array(shipment.invoiceDocuments.enumerated()), id: \.element.id) { index, invoice in
+                    HStack(spacing: CCSpacing.md) {
+                        // Icon badge
+                        Image(systemName: "doc.text.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(CCColor.actionBlue)
+                            .frame(width: 34, height: 34)
+                            .background(CCColor.actionBlue.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                        // Folio + label
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(invoice.folio)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(CCColor.textPrimary)
+                                .lineLimit(1)
+                            Text("Factura electrónica")
+                                .font(.caption)
+                                .foregroundStyle(CCColor.textSecondary)
+                        }
+
+                        Spacer(minLength: CCSpacing.sm)
+
+                        // Action buttons
+                        HStack(spacing: CCSpacing.sm) {
+                            invoiceFileButton(label: "PDF",
+                                             systemImage: "arrow.down.doc.fill",
+                                             invoice: invoice,
+                                             fileType: .pdf)
+                            invoiceFileButton(label: "XML",
+                                             systemImage: "chevron.left.forwardslash.chevron.right",
+                                             invoice: invoice,
+                                             fileType: .xml)
+                        }
                     }
                     .padding(.vertical, CCSpacing.md)
-                    if index < shipment.charges.count - 1 {
+
+                    if index < shipment.invoiceDocuments.count - 1 {
                         Divider().overlay(CCColor.border)
                     }
                 }
@@ -358,28 +395,107 @@ var body: some View {
         }
     }
 
+    private func invoiceFileButton(label: String, systemImage: String,
+                                   invoice: InvoiceDocument,
+                                   fileType: ShipmentDetailViewModel.InvoiceFileType) -> some View {
+        let isLoading = viewModel.loadingInvoiceID == invoice.id
+                     && viewModel.loadingInvoiceFileType == fileType
+        return Button {
+            Task { await viewModel.showInvoice(invoice, fileType: fileType) }
+        } label: {
+            Group {
+                if isLoading {
+                    ProgressView().controlSize(.mini)
+                        .frame(width: 36, height: 28)
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 10, weight: .bold))
+                        Text(label)
+                            .font(.caption.weight(.bold))
+                    }
+                    .frame(height: 28)
+                    .padding(.horizontal, CCSpacing.md)
+                }
+            }
+            .background(CCColor.actionBlue.opacity(0.1))
+            .foregroundStyle(CCColor.actionBlue)
+            .clipShape(RoundedRectangle(cornerRadius: CCRadius.sm, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.loadingInvoiceID != nil || viewModel.loadingDocumentID != nil)
+    }
+
     // MARK: - Free days
 
     private var freeDaysSection: some View {
-        VStack(alignment: .leading, spacing: CCSpacing.md) {
+        let total = shipment.freeDaysTotal
+        let remaining = shipment.freeDaysRemaining
+        let startDate = shipment.freeDaysStartDate
+        let deadline: Date? = startDate.flatMap {
+            Calendar.current.date(byAdding: .day, value: total, to: $0)
+        }
+        let tint: Color = remaining <= 2 ? CCColor.red : (remaining <= 4 ? CCColor.orange : CCColor.green)
+
+        return VStack(alignment: .leading, spacing: CCSpacing.md) {
             SectionHeader(title: "Días libres")
-            let remaining = shipment.freeDaysRemaining
-            let total = max(shipment.freeDaysTotal, 1)
-            let tint: Color = remaining <= 2 ? CCColor.red : (remaining <= 4 ? CCColor.orange : CCColor.green)
-            VStack(alignment: .leading, spacing: CCSpacing.sm) {
-                HStack {
-                    Text("\(remaining) de \(shipment.freeDaysTotal) días restantes")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(CCColor.textPrimary)
-                    Spacer()
-                    if remaining <= 2 {
-                        Text("Por vencer")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(CCColor.red)
+            VStack(spacing: CCSpacing.lg) {
+
+                HStack(alignment: .center, spacing: CCSpacing.lg) {
+                    // Circle badge — days remaining
+                    ZStack {
+                        Circle().fill(tint.opacity(0.12)).frame(width: 60, height: 60)
+                        Circle().strokeBorder(tint.opacity(0.3), lineWidth: 2).frame(width: 60, height: 60)
+                        VStack(spacing: 0) {
+                            Text("\(remaining)")
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .foregroundStyle(tint)
+                            Text("restantes")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(tint.opacity(0.8))
+                        }
                     }
+
+                    // Deadline — hero element
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Último día libre")
+                            .font(.caption)
+                            .foregroundStyle(CCColor.textSecondary)
+                        if let dl = deadline {
+                            Text(CCFormat.date(dl))
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(tint)
+                        } else {
+                            Text("\(total) días otorgados")
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(tint)
+                        }
+                        if let start = startDate {
+                            Text("Inicio: \(CCFormat.date(start))")
+                                .font(.caption)
+                                .foregroundStyle(CCColor.textTertiary)
+                        }
+                    }
+
+                    Spacer(minLength: 0)
                 }
-                ProgressView(value: Double(remaining), total: Double(total))
-                    .tint(tint)
+
+                // Warning banner when critical
+                if remaining <= 2 {
+                    HStack(spacing: CCSpacing.sm) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                        Text(remaining == 0
+                             ? "Sin días libres — pueden generarse cargos por demora."
+                             : "Quedan \(remaining) día\(remaining == 1 ? "" : "s") libres antes de generar cargos.")
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(CCColor.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(CCSpacing.md)
+                    .background(CCColor.red.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: CCRadius.sm, style: .continuous))
+                }
             }
             .ccCard()
         }

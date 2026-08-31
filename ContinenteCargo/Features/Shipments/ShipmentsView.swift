@@ -10,16 +10,20 @@ import SwiftUI
 struct ShipmentsView: View {
     @Environment(AppSession.self) private var session
     @Environment(ShipmentsViewModel.self) private var viewModel
+    @State private var navigationPath: [Int] = []
 
     var body: some View {
         @Bindable var vm = viewModel
 
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(alignment: .leading, spacing: CCSpacing.md) {
-                    // Filter tabs live inside the scroll content: this keeps them
-                    // fully visible below the search field (placing them as a
-                    // pinned sibling fights the iOS 27 nav-bar scroll edge effect).
+                    Text("Embarques")
+                        .font(.largeTitle.weight(.bold))
+                        .foregroundStyle(Color.black)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, CCSpacing.xs)
+
                     filterBar
 
                     if viewModel.isLoading {
@@ -63,7 +67,10 @@ struct ShipmentsView: View {
             }
             .background(CCColor.surface.ignoresSafeArea())
             .navigationTitle("Embarques")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(CCColor.surface, for: .navigationBar, .tabBar)
+            .toolbarBackground(.visible, for: .navigationBar, .tabBar)
+            .toolbarColorScheme(.light, for: .navigationBar, .tabBar)
             .searchable(text: $vm.searchText,
                         placement: .navigationBarDrawer(displayMode: .always),
                         prompt: "BL, booking, contenedor, origen o destino")
@@ -72,6 +79,11 @@ struct ShipmentsView: View {
             }
             .navigationDestination(for: Int.self) { shippingId in
                 ShipmentDetailLoaderView(shippingId: shippingId)
+            }
+            .onChange(of: session.deepLinkShipmentID) { _, newID in
+                guard let id = newID else { return }
+                navigationPath.append(id)
+                session.deepLinkShipmentID = nil
             }
             .task(id: session.authSession?.idToken) {
                 await viewModel.load(idToken: session.authSession?.idToken, clientID: session.clientID)

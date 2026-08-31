@@ -67,11 +67,34 @@ final class ShipmentDetailLoaderViewModel {
         state = .loading
         do {
             let detail = try await service.fetchShippingDetail(id: id, idToken: idToken)
+            #if DEBUG
+            Self.logDetail(detail)
+            #endif
             state = .loaded(detail.asShipment())
         } catch {
             state = .failed(error.localizedDescription)
         }
     }
+
+    #if DEBUG
+    private static func logDetail(_ d: APIShipmentDetail) {
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("📦 Shipment detail — ID \(d.id) | ref: \(d.refCode ?? "—")")
+        print("   Documentos  : \(d.documents?.count ?? 0)")
+        for doc in d.documents ?? [] {
+            print("     · \(doc.fileName ?? "(sin nombre)").\(doc.fileExtension ?? "?")  path: \(doc.path ?? "nil")")
+        }
+        let invCount = d.invoiceDocuments?.count ?? 0
+        print("   Facturas    : \(invCount == 0 ? "⚠️  Sin facturas timbradas asociadas a este embarque" : "\(invCount)")")
+        for inv in d.invoiceDocuments ?? [] {
+            print("     · folio: \(inv.folio ?? "—")  pdf: \(inv.pdf ?? "nil")  xml: \(inv.xml ?? "nil")")
+        }
+        print("   Días libres : \(d.freeDays.map { "\($0)" } ?? "nil")")
+        print("   ArrivalConf : \(d.arrivalConfirmation.map { CCFormat.date($0) } ?? "⚠️ nil — revisa nombre del campo")")
+        print("   changesDate : \(d.changesDate ?? "nil")")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    }
+    #endif
 }
 
 // MARK: - API → UI model mapping
@@ -82,13 +105,14 @@ extension APIShipmentDetail {
     /// detail screen renders it unchanged.
     func asShipment() -> Shipment {
         let timeline = (trackingTimeline ?? [])
-            .sorted { ($0.position ?? 0) < ($1.position ?? 0) }
+            .filter { $0.arrivalDate != nil }
+            .sorted { $0.arrivalDate! < $1.arrivalDate! }
 
         let events = timeline.map { event in
             TrackingEvent(
                 title: Self.formatEventTitle(event.event),
                 location: event.location ?? "",
-                date: event.arrivalDate ?? Date(),
+                date: event.arrivalDate!,
                 isCompleted: event.isCompleted ?? false,
                 icon: "circle"
             )
@@ -106,6 +130,14 @@ extension APIShipmentDetail {
                                     fileExtension: $0.fileExtension,
                                     documentType: $0.documentType) }
 
+        let invoices = (invoiceDocuments ?? []).compactMap { inv -> InvoiceDocument? in
+            guard let id = inv.id else { return nil }
+            return InvoiceDocument(id: id,
+                                   folio: inv.folio ?? "Factura \(id)",
+                                   xmlPath: inv.xml ?? "",
+                                   pdfPath: inv.pdf ?? "")
+        }
+
         let chargeItems = (fees ?? []).map {
             Charge(concept: $0.concept ?? "Cargo",
                    amount: $0.total ?? 0,
@@ -122,6 +154,16 @@ extension APIShipmentDetail {
                 return nil
             }
             .joined(separator: ", ")
+
+        // Compute free days remaining from arrival confirmation date
+        let total = freeDays ?? 0
+        var freeDaysStartDate: Date? = nil
+        var freeDaysRemaining = total
+        if let arrival = arrivalConfirmation {
+            freeDaysStartDate = arrival
+            let daysUsed = max(0, Calendar.current.dateComponents([.day], from: arrival, to: Date()).day ?? 0)
+            freeDaysRemaining = max(0, total - daysUsed)
+        }
 
         return Shipment(
             reference: refCode ?? "Embarque \(id)",
@@ -142,10 +184,12 @@ extension APIShipmentDetail {
             isInsured: Self.detectsInsurance(in: docs),
             timeline: events,
             documents: docs,
+            invoiceDocuments: invoices,
             incidents: [],
             charges: chargeItems,
-            freeDaysTotal: freeDays ?? 0,
-            freeDaysRemaining: freeDays ?? 0
+            freeDaysTotal: total,
+            freeDaysRemaining: freeDaysRemaining,
+            freeDaysStartDate: freeDaysStartDate
         )
     }
 

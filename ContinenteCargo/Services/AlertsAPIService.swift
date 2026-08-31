@@ -299,12 +299,21 @@ struct APIShipmentDetail: Decodable {
     let mbl: String?
     let freeDays: Int?
     let changesDate: String?
+    let arrivalConfirmation: Date?
     let shippingLine: String?
     let shipName: String?
     let bookingNumber: String?
     let trackingTimeline: [TrackingEventDto]?
     let documents: [APIDocument]?
+    let invoiceDocuments: [APIInvoiceDocument]?
     let fees: [ShippingSaleDto]?
+}
+
+struct APIInvoiceDocument: Decodable, Hashable {
+    let id: Int?
+    let folio: String?
+    let xml: String?
+    let pdf: String?
 }
 
 struct APIContainer: Decodable, Hashable {
@@ -330,9 +339,19 @@ struct APIDocument: Decodable, Hashable {
 }
 
 /// Response of GET /api/v1/shipments/documents/download-url — a short-lived S3 link.
+/// The API may return the URL under different field names; all common variants are covered.
 struct DocumentDownloadURL: Decodable {
     let url: String?
+    let downloadUrl: String?
+    let signedUrl: String?
+    let presignedUrl: String?
+    let fileUrl: String?
     let expiresAt: Date?
+
+    /// First non-nil URL string regardless of which field the API used.
+    var resolvedURLString: String? {
+        url ?? downloadUrl ?? signedUrl ?? presignedUrl ?? fileUrl
+    }
 }
 
 struct ShippingSaleDto: Decodable, Hashable {
@@ -452,7 +471,7 @@ final class ContinenteAPIService: AlertsServicing, ShippingDetailServicing, Over
         var components = URLComponents(url: ContinenteAPIConfig.documentDownloadURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "path", value: path)]
         let envelope: APIEnvelope<DocumentDownloadURL> = try await get(components.url!, idToken: idToken)
-        guard let urlString = envelope.data?.url, let url = URL(string: urlString) else {
+        guard let urlString = envelope.data?.resolvedURLString, let url = URL(string: urlString) else {
             throw APIError.server("URL de documento no disponible")
         }
         return url

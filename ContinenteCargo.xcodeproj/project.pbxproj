@@ -6,6 +6,10 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9A4BB9F7303520A40014B789 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 9A4BB9F6303520A40014B789 /* FirebaseMessaging */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		9A3687DC2FFE8FB0006958C3 /* ContinenteCargo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ContinenteCargo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -22,6 +26,7 @@
 		9A3687D92FFE8FB0006958C3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				9A4BB9F7303520A40014B789 /* FirebaseMessaging in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -31,6 +36,7 @@
 			isa = PBXGroup;
 			children = (
 				9A3687DE2FFE8FB0006958C3 /* ContinenteCargo */,
+				9A4BB9F5303520A40014B789 /* Frameworks */,
 				9A3687DD2FFE8FB0006958C3 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +47,13 @@
 				9A3687DC2FFE8FB0006958C3 /* ContinenteCargo.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9A4BB9F5303520A40014B789 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -60,6 +73,9 @@
 				9A3687DE2FFE8FB0006958C3 /* ContinenteCargo */,
 			);
 			name = ContinenteCargo;
+			packageProductDependencies = (
+				9A4BB9F6303520A40014B789 /* FirebaseMessaging */,
+			);
 			productName = ContinenteCargo;
 			productReference = 9A3687DC2FFE8FB0006958C3 /* ContinenteCargo.app */;
 			productType = "com.apple.product-type.application";
@@ -88,6 +104,9 @@
 			);
 			mainGroup = 9A3687D32FFE8FB0006958C3;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9A062CF730351E36002AB79F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9A3687DD2FFE8FB0006958C3 /* Products */;
 			projectDirPath = "";
@@ -244,7 +263,7 @@
 				CODE_SIGN_ENTITLEMENTS = ContinenteCargo/ContinenteCargo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HK32Z2N295;
+				DEVELOPMENT_TEAM = WVT26G4364;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -278,7 +297,7 @@
 				CODE_SIGN_ENTITLEMENTS = ContinenteCargo/ContinenteCargo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = HK32Z2N295;
+				DEVELOPMENT_TEAM = WVT26G4364;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -324,6 +343,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9A062CF730351E36002AB79F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.17.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9A4BB9F6303520A40014B789 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9A062CF730351E36002AB79F /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9A3687D42FFE8FB0006958C3 /* Project object */;
 	validationLevel = 1;

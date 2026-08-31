@@ -2,6 +2,9 @@
 //  RegisterViewModel.swift
 //  ContinenteCargo
 //
+//  El registro solo recopila los datos del solicitante y notifica al equipo.
+//  La empresa crea y activa la cuenta manualmente desde Firebase Console.
+//
 
 import SwiftUI
 import Observation
@@ -11,27 +14,17 @@ import Observation
 final class RegisterViewModel {
     var name: String = ""
     var email: String = ""
-    var password: String = ""
-    var confirmPassword: String = ""
+    var phone: String = ""
     var isLoading: Bool = false
     var errorMessage: String?
 
-    /// The button is enabled once every field has content.
     var canSubmit: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
             && !email.trimmingCharacters(in: .whitespaces).isEmpty
-            && !password.isEmpty
-            && !confirmPassword.isEmpty
+            && !phone.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    private let authService: AuthServicing
-
-    init(authService: AuthServicing) {
-        self.authService = authService
-    }
-
-    /// Creates the account in Firebase. On success hands the session to `onSuccess`.
-    func signUp(onSuccess: (AuthSession) -> Void) async {
+    func requestAccess(onSuccess: () -> Void) async {
         guard canSubmit else {
             errorMessage = "Completa todos los campos."
             return
@@ -41,26 +34,19 @@ final class RegisterViewModel {
             errorMessage = "Ingresa un correo electrónico válido."
             return
         }
-        guard password.count >= 6 else {
-            errorMessage = AuthError.weakPassword.errorDescription
-            return
-        }
-        guard password == confirmPassword else {
-            errorMessage = "Las contraseñas no coinciden."
-            return
-        }
         errorMessage = nil
         isLoading = true
         defer { isLoading = false }
-        do {
-            let session = try await authService.signUp(
-                name: name.trimmingCharacters(in: .whitespaces),
-                email: trimmedEmail,
-                password: password
-            )
-            onSuccess(session)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let trimmedPhone = phone.trimmingCharacters(in: .whitespaces)
+
+        await RegistrationNotifierService.shared.notifyNewRegistration(
+            name: trimmedName,
+            email: trimmedEmail,
+            phone: trimmedPhone
+        )
+
+        onSuccess()
     }
 }
