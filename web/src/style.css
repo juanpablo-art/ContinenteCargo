@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+
+    --background: 245 247 251;
+    --foreground: 16 36 58;
+
+    --card: 255 255 255;
+    --card-foreground: 16 36 58;
+
+    --primary: 2 47 86;
+    --primary-foreground: 255 255 255;
+
+    --border: 228 234 242;
+    --input: 221 229 239;
+    --ring: 31 132 248;
+
+    --radius: 0.625rem;
+
+    --ink: 16 36 58;
+    --muted: 100 119 140;
+    --line: 228 234 242;
+
+    --navy: 2 47 86;
+    --navy-soft: 10 63 107;
+    --navy-deep: 1 30 57;
+
+    --blue: 31 132 248;
+    --blue-soft: 234 243 254;
+    --blue-ink: 15 95 191;
+
+    --orange: 232 111 20;
+    --orange-soft: 253 241 231;
+
+    --danger: 220 38 38;
+    --danger-soft: 254 242 242;
+    --success: 5 150 105;
+    --success-soft: 236 253 245;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    margin: 0;
+  }
+
+  * {
+    @apply border-border;
+  }
+}
+
+@layer components {
+  .cc-field {
+    @apply w-full rounded-[10px] border border-line bg-card px-3 py-3 text-[15px] text-ink outline-none transition focus:border-blue focus:ring-2 focus:ring-blue/20;
+  }
+
+  .cc-label {
+    @apply mb-1 block text-xs font-medium text-muted;
+  }
+
+  .cc-btn {
+    @apply inline-flex h-12 w-full items-center justify-center rounded-[10px] bg-blue px-4 text-[15px] font-semibold text-white transition hover:bg-blue-ink disabled:cursor-not-allowed disabled:opacity-55;
+  }
+
+  .cc-btn-secondary {
+    @apply inline-flex h-12 w-full items-center justify-center rounded-[10px] border border-line bg-card px-4 text-[15px] font-semibold text-navy transition hover:bg-blue-soft/60 disabled:cursor-not-allowed disabled:opacity-55;
+  }
+}
