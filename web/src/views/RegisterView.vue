@@ -29,7 +29,8 @@ const companyContact = ref('');
 const handlesLTL = ref(false);
 
 const coverageMode = ref<CoverageMode>('zone');
-const selectedZones = ref<Set<string>>(new Set());
+/** Individual states — matches iOS MexicoZoneMapView.selectedStates. */
+const selectedStates = ref<Set<string>>(new Set());
 const coverageEquipment = ref<Set<EquipmentType>>(new Set());
 const routes = ref<CarrierRoute[]>([]);
 const originState = ref('N.L.');
@@ -38,7 +39,7 @@ const bidirectional = ref(true);
 const routeEquipment = ref<Set<EquipmentType>>(new Set());
 const finishEquipmentError = ref(false);
 
-const allStates = MEXICAN_ZONES.flatMap((z) => z.states);
+const allStates = MEXICAN_ZONES.flatMap((z) => [...z.states]);
 
 const basicValid = computed(() => {
   const companyReady =
@@ -53,26 +54,51 @@ const basicValid = computed(() => {
   );
 });
 
-const coverageStates = computed(() => {
-  const states = new Set<string>();
-  for (const zone of MEXICAN_ZONES) {
-    if (selectedZones.value.has(zone.id)) {
-      zone.states.forEach((s) => states.add(s));
-    }
-  }
-  return [...states];
-});
+type ZoneLevel = 'none' | 'partial' | 'full';
+
+function zoneSelectionLevel(zone: (typeof MEXICAN_ZONES)[number]): ZoneLevel {
+  const selected = zone.states.filter((s) => selectedStates.value.has(s)).length;
+  if (selected === 0) return 'none';
+  if (selected === zone.states.length) return 'full';
+  return 'partial';
+}
+
+function selectedCountInZone(zone: (typeof MEXICAN_ZONES)[number]): number {
+  return zone.states.filter((s) => selectedStates.value.has(s)).length;
+}
+
+/** Zones that still have at least one selected state (for chip grouping). */
+const zonesWithSelectedStates = computed(() =>
+  MEXICAN_ZONES.filter((z) => z.states.some((s) => selectedStates.value.has(s))).map(
+    (z) => ({
+      id: z.id,
+      states: z.states.filter((s) => selectedStates.value.has(s)),
+    }),
+  ),
+);
 
 const canFinish = computed(() => {
-  if (coverageMode.value === 'zone') return selectedZones.value.size > 0;
+  if (coverageMode.value === 'zone') return selectedStates.value.size > 0;
   return routes.value.length > 0;
 });
 
-function toggleZone(id: string) {
-  const next = new Set(selectedZones.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  selectedZones.value = next;
+/** Tap zone: full → clear all; else add all missing states (iOS toggleZone). */
+function toggleZone(zoneId: string) {
+  const zone = MEXICAN_ZONES.find((z) => z.id === zoneId);
+  if (!zone) return;
+  const next = new Set(selectedStates.value);
+  if (zoneSelectionLevel(zone) === 'full') {
+    zone.states.forEach((s) => next.delete(s));
+  } else {
+    zone.states.forEach((s) => next.add(s));
+  }
+  selectedStates.value = next;
+}
+
+function removeState(state: string) {
+  const next = new Set(selectedStates.value);
+  next.delete(state);
+  selectedStates.value = next;
 }
 
 function toggleEquipment(set: Set<EquipmentType>, eq: EquipmentType) {
@@ -134,7 +160,8 @@ async function submit() {
     companyName: companyName.value.trim(),
     companyContact: companyContact.value.trim(),
     routes: coverageMode.value === 'route' ? routes.value : [],
-    coverageStates: coverageMode.value === 'zone' ? coverageStates.value : [],
+    coverageStates:
+      coverageMode.value === 'zone' ? [...selectedStates.value] : [],
     coverageEquipmentTypes:
       coverageMode.value === 'zone' ? [...coverageEquipment.value] : [],
     handlesLTL: selectedType.value === 'carrier' ? handlesLTL.value : false,
@@ -334,8 +361,7 @@ function goLogin() {
       <!-- Zone mode -->
       <div v-if="coverageMode === 'zone'" class="space-y-4">
         <p class="text-sm text-muted">
-          Selecciona las zonas donde operas. Se guardan los estados de cobertura
-          igual que en iOS.
+          Toca una zona para agregar sus estados. Luego quita los que no corras.
         </p>
         <div class="grid gap-2">
           <button
@@ -343,16 +369,52 @@ function goLogin() {
             :key="zone.id"
             type="button"
             class="rounded-[10px] border px-3 py-3 text-left transition"
-            :class="
-              selectedZones.has(zone.id)
-                ? 'border-blue bg-blue-soft'
-                : 'border-line bg-card'
-            "
+            :class="{
+              'border-line bg-card': zoneSelectionLevel(zone) === 'none',
+              'border-blue/60 bg-blue-soft/50': zoneSelectionLevel(zone) === 'partial',
+              'border-blue bg-blue-soft': zoneSelectionLevel(zone) === 'full',
+            }"
             @click="toggleZone(zone.id)"
           >
-            <span class="block text-sm font-semibold text-navy">{{ zone.id }}</span>
-            <span class="text-xs text-muted">{{ zone.states.join(', ') }}</span>
+            <span class="flex items-center justify-between gap-2">
+              <span class="text-sm font-semibold text-navy">{{ zone.id }}</span>
+              <span
+                v-if="zoneSelectionLevel(zone) !== 'none'"
+                class="rounded-full bg-blue/15 px-2 py-0.5 text-[10px] font-bold text-blue-ink"
+              >
+                {{ selectedCountInZone(zone) }}/{{ zone.states.length }}
+              </span>
+            </span>
+            <span class="mt-0.5 block text-xs text-muted">{{ zone.states.join(', ') }}</span>
           </button>
+        </div>
+
+        <div v-if="selectedStates.size > 0" class="space-y-2">
+          <p class="text-[11px] text-muted">
+            Estados seleccionados — toca × para quitar uno
+          </p>
+          <div
+            v-for="group in zonesWithSelectedStates"
+            :key="group.id"
+            class="flex flex-wrap items-center gap-1.5"
+          >
+            <span
+              class="rounded-full bg-navy/10 px-2 py-0.5 text-[10px] font-bold text-navy"
+            >
+              {{ group.id }}
+            </span>
+            <button
+              v-for="state in group.states"
+              :key="state"
+              type="button"
+              class="inline-flex items-center gap-1 rounded-full bg-blue-soft px-2.5 py-1 text-[11px] font-medium text-blue-ink ring-1 ring-inset ring-blue/25"
+              :aria-label="`Quitar ${state}`"
+              @click="removeState(state)"
+            >
+              {{ state }}
+              <span class="text-[10px] font-bold opacity-70" aria-hidden="true">×</span>
+            </button>
+          </div>
         </div>
 
         <div>
@@ -497,7 +559,7 @@ function goLogin() {
           <p v-if="!canFinish" class="mt-2 text-center text-xs text-muted">
             {{
               coverageMode === 'zone'
-                ? 'Selecciona al menos una zona para continuar'
+                ? 'Selecciona al menos un estado para continuar'
                 : 'Agrega al menos una ruta para continuar'
             }}
           </p>
