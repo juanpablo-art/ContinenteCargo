@@ -119,6 +119,19 @@ export function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
+export function timeAgo(d: Date): string {
+  const s = Math.round((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'Justo ahora';
+  const m = Math.round(s / 60);
+  if (m < 60) return `Hace ${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `Hace ${h} h`;
+  const days = Math.round(h / 24);
+  if (days === 1) return 'Ayer';
+  if (days < 7) return `Hace ${days} días`;
+  return formatDate(d);
+}
+
 export function initials(name?: string | null): string {
   const parts = (name || '').trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return 'CC';

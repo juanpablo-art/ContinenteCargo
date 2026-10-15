@@ -121,7 +121,7 @@ async function run(id: string, action: () => Promise<unknown>, ok: string) {
         :icon="UserPlus"
         :tone="pendingApprovals.length ? 'orange' : 'navy'"
         :to="{ name: 'admin-carriers' }"
-        :hint="`${availableUnits} unidades disponibles`"
+        :hint="availableUnits === 1 ? '1 unidad disponible' : `${availableUnits} unidades disponibles`"
       />
     </div>
 
@@ -145,11 +145,11 @@ async function run(id: string, action: () => Promise<unknown>, ok: string) {
               <div class="min-w-0 flex-1">
                 <p class="truncate text-sm font-semibold text-navy">
                   {{ item.offer.carrierName }}
-                  <span class="font-normal text-muted">propone</span>
-                  <span class="cc-money">
-                    {{ formatMoney(item.offer.proposedPrice ?? item.offer.amount, item.offer.currency) }}
-                  </span>
-                  <span class="font-normal text-muted">/ ud</span>
+                  <span class="font-normal text-muted">&nbsp;propone&nbsp;</span>
+                  <span class="cc-money">{{
+                    formatMoney(item.offer.proposedPrice ?? item.offer.amount, item.offer.currency)
+                  }}</span>
+                  <span class="font-normal text-muted">&nbsp;/ ud</span>
                 </p>
                 <p class="mt-0.5 truncate text-xs text-muted">
                   Contra-oferta · {{ item.load?.reference ?? 'Carga' }} ·

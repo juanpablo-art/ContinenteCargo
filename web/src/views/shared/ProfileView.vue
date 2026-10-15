@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { Mail, Phone, ShieldCheck, LogOut, Plus, X, ArrowRight, ArrowLeftRight, Boxes } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
 import {
@@ -10,6 +11,9 @@ import {
   type CarrierRoute,
   type EquipmentType,
 } from '@/lib/models';
+import { initials } from '@/lib/format';
+import { toast } from '@/lib/toast';
+import StatusBadge from '@/components/StatusBadge.vue';
 
 const auth = useAuthStore();
 const store = useDataStore();
@@ -23,8 +27,7 @@ const isCarrier = computed(
 const handlesLTL = ref(user.value?.handlesLTL ?? false);
 const routes = ref<CarrierRoute[]>([...(user.value?.routes ?? [])]);
 const saving = ref(false);
-const message = ref('');
-const error = ref('');
+const dirty = ref(false);
 
 const newOrigin = ref('N.L.');
 const newDest = ref('CDMX');
@@ -60,21 +63,25 @@ function addRoute() {
     equipmentTypes: [...newEquipment.value],
   });
   newEquipment.value = [];
+  dirty.value = true;
 }
 
 function removeRoute(id: string) {
   routes.value = routes.value.filter((r) => r.id !== id);
+  dirty.value = true;
 }
 
 async function saveRoutes() {
   saving.value = true;
-  message.value = '';
-  error.value = '';
   try {
     await store.updateCarrierRoutes(routes.value);
-    message.value = 'Rutas actualizadas';
+    dirty.value = false;
+    toast.success('Rutas actualizadas', 'Recibirás avisos de cargas en estas rutas.');
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'No se pudieron guardar las rutas';
+    toast.error(
+      'No se pudieron guardar las rutas',
+      err instanceof Error ? err.message : undefined,
+    );
   } finally {
     saving.value = false;
   }
@@ -82,149 +89,180 @@ async function saveRoutes() {
 
 async function toggleLTL() {
   handlesLTL.value = !handlesLTL.value;
-  await store.setHandlesLTL(handlesLTL.value);
+  try {
+    await store.setHandlesLTL(handlesLTL.value);
+    toast.success(handlesLTL.value ? 'Cargas LTL activadas' : 'Cargas LTL desactivadas');
+  } catch (e) {
+    handlesLTL.value = !handlesLTL.value;
+    toast.error('No se pudo actualizar', e instanceof Error ? e.message : undefined);
+  }
 }
 
 async function logout() {
+  const { stopAppListeners } = await import('@/lib/realtime');
+  stopAppListeners();
   await auth.logout();
   await router.push({ name: 'login' });
 }
 </script>
 
 <template>
-  <div class="cc-page-narrow">
-    <h1 class="cc-h1 mb-5">Perfil</h1>
-
-    <section v-if="user" class="mb-5 cc-card p-4 md:p-5">
-      <p class="text-lg font-semibold text-navy">{{ user.name }}</p>
-      <p class="text-sm text-muted">{{ roleLabel }}</p>
-      <dl class="mt-4 space-y-2 text-sm">
-        <div class="flex justify-between gap-4">
-          <dt class="text-muted">Correo</dt>
-          <dd>{{ user.email }}</dd>
-        </div>
-        <div class="flex justify-between gap-4">
-          <dt class="text-muted">Teléfono</dt>
-          <dd>{{ user.phone }}</dd>
-        </div>
-        <div class="flex justify-between gap-4">
-          <dt class="text-muted">Estado</dt>
-          <dd>{{ user.status }}</dd>
-        </div>
-      </dl>
-    </section>
-
-    <section
-      v-if="isCarrier && user?.role === 'carrier'"
-      class="mb-5 cc-card p-4 md:p-5"
-    >
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <h2 class="text-sm font-semibold text-navy">Opero cargas LTL</h2>
-          <p class="text-xs text-muted">Visible en marketplace consolidado</p>
-        </div>
-        <button
-          type="button"
-          class="relative h-7 w-12 rounded-full transition"
-          :class="handlesLTL ? 'bg-brand' : 'bg-line'"
-          @click="toggleLTL"
-        >
+  <div v-if="user" class="cc-page-narrow space-y-5">
+    <section class="cc-card overflow-hidden">
+      <div class="h-20 bg-gradient-to-r from-navy-deep via-navy to-blue md:h-24" aria-hidden="true" />
+      <div class="px-5 pb-5">
+        <div class="-mt-9 flex items-end justify-between gap-3">
           <span
-            class="absolute top-0.5 size-6 rounded-full bg-white shadow transition"
-            :class="handlesLTL ? 'left-5' : 'left-0.5'"
-          />
-        </button>
+            class="flex size-[72px] items-center justify-center rounded-2xl bg-gradient-to-br from-blue to-navy-soft text-2xl font-bold text-white shadow-elevated ring-4 ring-card"
+          >
+            {{ initials(user.name) }}
+          </span>
+          <StatusBadge :status="user.status" />
+        </div>
+        <h1 class="cc-h1 mt-3">{{ user.name }}</h1>
+        <p class="text-sm text-muted">{{ roleLabel }}</p>
+
+        <dl class="mt-5 grid gap-2 sm:grid-cols-2">
+          <div class="flex items-center gap-3 rounded-xl bg-background px-3.5 py-3">
+            <Mail class="size-4 shrink-0 text-muted" aria-hidden="true" />
+            <div class="min-w-0">
+              <dt class="text-[11px] font-medium text-muted">Correo</dt>
+              <dd class="truncate text-sm font-medium text-navy">{{ user.email }}</dd>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 rounded-xl bg-background px-3.5 py-3">
+            <Phone class="size-4 shrink-0 text-muted" aria-hidden="true" />
+            <div class="min-w-0">
+              <dt class="text-[11px] font-medium text-muted">Teléfono</dt>
+              <dd class="truncate text-sm font-medium text-navy">{{ user.phone || '—' }}</dd>
+            </div>
+          </div>
+        </dl>
       </div>
     </section>
 
-    <section v-if="isCarrier" class="mb-5 cc-card p-4 md:p-5">
-      <h2 class="mb-1 text-sm font-semibold text-navy">Mis rutas</h2>
-      <p class="mb-3 text-xs text-muted">
-        Al definir rutas explícitas, se limpian cobertura por estados/zonas.
-      </p>
-
-      <p v-if="message" class="mb-2 text-sm text-success">{{ message }}</p>
-      <p v-if="error" class="mb-2 text-sm text-danger">{{ error }}</p>
-
-      <ul v-if="routes.length" class="mb-4 space-y-2">
-        <li
-          v-for="r in routes"
-          :key="r.id"
-          class="flex items-start justify-between gap-2 rounded-xl bg-background px-3 py-2 text-sm"
-        >
-          <div>
-            <p class="font-medium text-navy">
-              {{ r.originState }} {{ r.bidirectional ? '↔' : '→' }} {{ r.destinationState }}
-            </p>
-            <p class="text-xs text-muted">
-              {{
-                r.equipmentTypes.length
-                  ? r.equipmentTypes.join(', ')
-                  : 'Cualquier equipo'
-              }}
-            </p>
-          </div>
-          <button
-            type="button"
-            class="text-xs font-medium text-danger"
-            @click="removeRoute(r.id)"
-          >
-            Quitar
-          </button>
-        </li>
-      </ul>
-      <p v-else class="mb-4 text-sm text-muted">Sin rutas explícitas.</p>
-
-      <div class="space-y-2 rounded-xl border border-dashed border-line p-3">
-        <p class="text-xs font-semibold text-navy">Agregar ruta</p>
-        <div class="grid gap-2 sm:grid-cols-2">
-          <select v-model="newOrigin" class="cc-field py-2 text-sm">
-            <option v-for="s in MEXICAN_STATES" :key="s" :value="s">{{ s }}</option>
-          </select>
-          <select v-model="newDest" class="cc-field py-2 text-sm">
-            <option v-for="s in MEXICAN_STATES" :key="`d-${s}`" :value="s">{{ s }}</option>
-          </select>
-        </div>
-        <label class="flex items-center gap-2 text-xs text-muted">
-          <input v-model="newBidirectional" type="checkbox" class="size-4" />
-          Bidireccional
-        </label>
-        <div class="flex flex-wrap gap-1.5">
-          <button
-            v-for="eq in EQUIPMENT_TYPES"
-            :key="eq"
-            type="button"
-            class="rounded-full px-2 py-0.5 text-[10px] font-medium"
-            :class="
-              newEquipment.includes(eq)
-                ? 'bg-brand text-white'
-                : 'border border-line text-muted'
-            "
-            @click="toggleEq(eq)"
-          >
-            {{ eq }}
-          </button>
-        </div>
-        <button type="button" class="cc-btn-secondary h-9 text-sm" @click="addRoute">
-          Agregar a la lista
-        </button>
+    <section v-if="user.role === 'carrier'" class="cc-card flex items-center gap-4 p-5">
+      <span class="cc-icon-tile bg-teal-50 text-teal-700"><Boxes class="size-[18px]" aria-hidden="true" /></span>
+      <div class="min-w-0 flex-1">
+        <h2 class="cc-h2">Opero cargas consolidadas (LTL)</h2>
+        <p class="mt-0.5 text-[13px] text-muted">Recibe y cotiza cargas del marketplace consolidado.</p>
       </div>
-
       <button
         type="button"
-        class="cc-btn mt-4 h-10 text-sm"
-        :disabled="saving"
-        @click="saveRoutes"
+        role="switch"
+        :aria-checked="handlesLTL"
+        aria-label="Opero cargas LTL"
+        class="relative h-7 w-12 shrink-0 rounded-full transition"
+        :class="handlesLTL ? 'bg-brand' : 'bg-[rgb(214_222_234)]'"
+        @click="toggleLTL"
       >
-        {{ saving ? 'Guardando…' : 'Guardar rutas' }}
+        <span
+          class="absolute top-0.5 size-6 rounded-full bg-white shadow-md transition-all duration-200"
+          :class="handlesLTL ? 'left-[22px]' : 'left-0.5'"
+        />
       </button>
     </section>
 
-    <button
-      type="button"
-      class="w-full rounded-[10px] border border-danger/30 bg-danger-soft px-4 py-3 text-sm font-semibold text-danger"
-      @click="logout"
-    >
+    <section v-if="isCarrier" class="cc-card overflow-hidden">
+      <div class="p-5">
+        <h2 class="cc-h2">Mis rutas</h2>
+        <p class="mt-0.5 text-[13px] text-muted">
+          Solo recibirás cargas que coincidan. Al definir rutas explícitas se reemplaza la cobertura por estados o zonas.
+        </p>
+
+        <ul v-if="routes.length" class="mt-4 space-y-2">
+          <li
+            v-for="r in routes"
+            :key="r.id"
+            class="flex items-center gap-3 rounded-xl border border-line px-3.5 py-3"
+          >
+            <component
+              :is="r.bidirectional ? ArrowLeftRight : ArrowRight"
+              class="size-4 shrink-0 text-brand"
+              aria-hidden="true"
+            />
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold text-navy">
+                {{ r.originState }}
+                <span class="font-normal text-muted">{{ r.bidirectional ? '↔' : '→' }}</span>
+                {{ r.destinationState }}
+              </p>
+              <p class="truncate text-xs text-muted">
+                {{ r.equipmentTypes.length ? r.equipmentTypes.join(', ') : 'Cualquier equipo' }}
+              </p>
+            </div>
+            <button
+              type="button"
+              class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted transition hover:bg-danger-soft hover:text-danger"
+              aria-label="Quitar ruta"
+              @click="removeRoute(r.id)"
+            >
+              <X class="size-4" />
+            </button>
+          </li>
+        </ul>
+        <p v-else class="mt-4 rounded-xl bg-background px-4 py-3 text-[13px] text-muted">
+          Sin rutas explícitas: recibes cargas según tu cobertura de registro.
+        </p>
+      </div>
+
+      <div class="space-y-3 border-t border-line bg-background/50 p-5">
+        <p class="text-[13px] font-semibold text-navy">Agregar ruta</p>
+        <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <select v-model="newOrigin" class="cc-field" aria-label="Origen">
+            <option v-for="s in MEXICAN_STATES" :key="s" :value="s">{{ s }}</option>
+          </select>
+          <component
+            :is="newBidirectional ? ArrowLeftRight : ArrowRight"
+            class="size-4 text-muted"
+            aria-hidden="true"
+          />
+          <select v-model="newDest" class="cc-field" aria-label="Destino">
+            <option v-for="s in MEXICAN_STATES" :key="`d-${s}`" :value="s">{{ s }}</option>
+          </select>
+        </div>
+        <label class="cc-check">
+          <input v-model="newBidirectional" type="checkbox" />
+          Ida y vuelta (bidireccional)
+        </label>
+        <div>
+          <p class="mb-2 text-xs font-medium text-muted">Equipos (opcional)</p>
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              v-for="eq in EQUIPMENT_TYPES"
+              :key="eq"
+              type="button"
+              class="cc-chip h-8 text-[12.5px]"
+              :class="newEquipment.includes(eq) && 'cc-chip-active'"
+              @click="toggleEq(eq)"
+            >
+              {{ eq }}
+            </button>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2 pt-1 sm:flex-row">
+          <button type="button" class="cc-btn-secondary sm:flex-1" @click="addRoute">
+            <Plus class="size-4" aria-hidden="true" /> Agregar a la lista
+          </button>
+          <button type="button" class="cc-btn sm:flex-1" :disabled="saving || !dirty" @click="saveRoutes">
+            {{ saving ? 'Guardando…' : 'Guardar rutas' }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="user.role === 'admin'" class="cc-card flex items-center gap-4 p-5">
+      <span class="cc-icon-tile"><ShieldCheck class="size-[18px]" aria-hidden="true" /></span>
+      <div>
+        <h2 class="cc-h2">Acceso de administrador</h2>
+        <p class="mt-0.5 text-[13px] text-muted">
+          Puedes publicar cargas, aprobar transportistas y ver información privada de clientes.
+        </p>
+      </div>
+    </section>
+
+    <button type="button" class="cc-btn-secondary text-danger hover:!border-danger/30 hover:!bg-danger-soft" @click="logout">
+      <LogOut class="size-4" aria-hidden="true" />
       Cerrar sesión
     </button>
   </div>
