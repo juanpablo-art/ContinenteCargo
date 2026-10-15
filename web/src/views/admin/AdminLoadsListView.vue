@@ -5,7 +5,6 @@ import { Plus, Truck } from '@lucide/vue';
 import { useDataStore } from '@/stores/data';
 import LoadCard from '@/components/LoadCard.vue';
 import EmptyState from '@/components/EmptyState.vue';
-import type { LoadStatus } from '@/lib/models';
 
 const store = useDataStore();
 const router = useRouter();

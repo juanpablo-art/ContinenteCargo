@@ -427,6 +427,18 @@ export async function updateLoadFields(
   await updateDoc(doc(db, 'loads', loadId), fields);
 }
 
+/** Carrier/admin status bump — updateData only. */
+export async function updateLoadStatusFields(
+  loadId: string,
+  status: LoadStatus,
+  statusHistory: StatusChange[],
+): Promise<void> {
+  await updateDoc(doc(db, 'loads', loadId), {
+    status,
+    statusHistory: statusHistory.map(statusChangeToData),
+  });
+}
+
 export async function saveUnit(unit: Unit): Promise<void> {
   await setDoc(doc(db, 'units', unit.id), unitToData(unit));
 }

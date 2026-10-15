@@ -1,182 +1,283 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import InfoRow from '@/components/InfoRow.vue';
-import StatusBadge from '@/components/StatusBadge.vue';
+import { ArrowLeft } from '@lucide/vue';
+import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
 import {
   loadDestinationDisplay,
+  loadIsOpen,
   loadOriginDisplay,
 } from '@/lib/models';
-import { formatDateTime, formatMoney } from '@/lib/format';
+import { formatDate, formatMoney, statusBadgeClass } from '@/lib/format';
+import TakeLoadConfirmPanel from '@/views/carrier/TakeLoadConfirmPanel.vue';
+import BidOfferPanel from '@/views/carrier/BidOfferPanel.vue';
+import AvailabilityPanel from '@/views/carrier/AvailabilityPanel.vue';
+import LTLQuotePanel from '@/views/carrier/LTLQuotePanel.vue';
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const store = useDataStore();
 
-const load = computed(() => store.loadById(String(route.params.id)));
-const showSensitive = computed(() =>
+const loadId = computed(() => String(route.params.id));
+const load = computed(() => store.loadById(loadId.value));
+
+const panel = ref<'none' | 'take' | 'bid' | 'avail' | 'ltl'>('none');
+
+const isAssignedToMe = computed(() => {
+  const userId = auth.currentUser?.uuid;
+  if (!userId || !load.value) return false;
+  return (
+    load.value.confirmedCarrierIds.includes(userId) ||
+    load.value.assignedCarrierId === userId
+  );
+});
+
+const currentOffer = computed(() => {
+  const userId = auth.currentUser?.uuid;
+  if (!userId || !load.value) return null;
+  return store.offersForLoad(load.value.id).find((o) => o.carrierId === userId) ?? null;
+});
+
+const showPrivate = computed(() =>
   load.value ? store.canSeePrivateFields(load.value) : false,
 );
 
-const unitsCount = ref(1);
-const price = ref(0);
-const trackingUrl = ref('');
-const eta = ref('');
-const busy = ref(false);
-const resultMsg = ref('');
-
-watch(
-  load,
-  (l) => {
-    if (l) price.value = l.offeredPrice;
-  },
-  { immediate: true },
+const canAct = computed(
+  () => load.value && loadIsOpen(load.value) && !isAssignedToMe.value,
 );
-
-const ctaLabel = computed(() => {
-  if (!load.value) return 'Confirmar';
-  if (
-    price.value > load.value.offeredPrice &&
-    load.value.maxAuthorizedPriceSinIVA == null
-  ) {
-    return 'Enviar propuesta al administrador';
-  }
-  if (load.value.assignmentMode === 'Subasta Inversa') return 'Enviar oferta';
-  if (load.value.assignmentMode === 'Confirmación Manual') return 'Indicar disponibilidad';
-  if (load.value.assignmentMode === 'Consolidada LTL') return 'Enviar cotización LTL';
-  return 'Confirmar – Tomar carga';
-});
-
-async function confirm() {
-  if (!load.value) return;
-  busy.value = true;
-  resultMsg.value = '';
-  try {
-    const l = load.value;
-    if (
-      price.value > l.offeredPrice &&
-      l.maxAuthorizedPriceSinIVA == null
-    ) {
-      const res = await store.submitCounterOffer({
-        loadId: l.id,
-        availableUnitCount: unitsCount.value,
-        proposedPricePerUnit: price.value,
-        trackingUrl: trackingUrl.value,
-        unitETA: eta.value ? new Date(eta.value) : undefined,
-      });
-      resultMsg.value =
-        res === 'pendingApproval'
-          ? 'Propuesta enviada al administrador'
-          : String(res);
-      return;
-    }
-
-    if (l.assignmentMode === 'Subasta Inversa') {
-      const res = await store.placeBid({
-        loadId: l.id,
-        amount: price.value,
-        availableUnitCount: unitsCount.value,
-      });
-      resultMsg.value = res === 'success' ? 'Oferta enviada' : String(res);
-      return;
-    }
-
-    if (l.assignmentMode === 'Confirmación Manual') {
-      await store.indicateAvailability(l.id, undefined, price.value);
-      resultMsg.value = 'Disponibilidad indicada';
-      return;
-    }
-
-    if (l.assignmentMode === 'Consolidada LTL') {
-      const ok = await store.submitLTLQuote(l.id, price.value);
-      resultMsg.value = ok ? 'Cotización enviada' : 'No se pudo enviar';
-      return;
-    }
-
-    const res = await store.takeLoad({
-      loadId: l.id,
-      availableUnitCount: unitsCount.value,
-      trackingUrl: trackingUrl.value,
-      unitETA: eta.value ? new Date(eta.value) : undefined,
-    });
-    if (res === 'success') {
-      resultMsg.value = 'Participación confirmada';
-      await router.push({ name: 'carrier-trips' });
-    } else {
-      resultMsg.value = String(res);
-    }
-  } finally {
-    busy.value = false;
-  }
-}
 </script>
 
 <template>
-  <div v-if="load" class="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
-    <button type="button" class="mb-3 text-sm text-blue" @click="router.back()">← Volver</button>
-    <div class="flex items-start justify-between gap-3">
-      <div>
-        <p class="text-xs text-muted">{{ load.reference }}</p>
-        <h1 class="text-2xl font-bold text-navy">
-          {{ loadOriginDisplay(load) }} → {{ loadDestinationDisplay(load) }}
-        </h1>
-      </div>
-      <StatusBadge :status="load.status" />
+  <div class="mx-auto max-w-3xl px-4 py-5 md:px-6">
+    <button
+      type="button"
+      class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-brand"
+      @click="router.back()"
+    >
+      <ArrowLeft class="size-4" />
+      Volver
+    </button>
+
+    <div v-if="!load" class="rounded-2xl border border-line bg-card p-8 text-center text-muted">
+      Carga no encontrada o sin acceso.
     </div>
 
-    <dl class="mt-5 rounded-2xl border border-line bg-card p-4">
-      <InfoRow label="Modalidad" :value="load.assignmentMode" />
-      <InfoRow label="Equipo" :value="load.equipmentType" />
-      <InfoRow label="Unidades" :value="String(load.unitCount)" />
-      <InfoRow label="Precio / u" :value="formatMoney(load.offeredPrice, load.currency)" />
-      <InfoRow
-        label="Total"
-        :value="formatMoney(load.offeredPrice * Math.max(1, load.unitCount), load.currency)"
-      />
-      <InfoRow label="Recolección" :value="formatDateTime(load.pickupDate)" />
-      <InfoRow label="Deadline" :value="formatDateTime(load.deadline)" />
-      <InfoRow label="Mercancía" :value="load.merchandiseDescription || '—'" />
-      <template v-if="showSensitive">
-        <InfoRow label="Cliente" :value="load.clientContactName" />
-        <InfoRow label="Tel." :value="load.clientContactPhone" />
-        <InfoRow label="Dir. origen" :value="load.exactPickupAddress" />
-        <InfoRow label="Dir. destino" :value="load.exactDeliveryAddress" />
-      </template>
-    </dl>
+    <template v-else>
+      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="text-xs text-muted">{{ load.reference }}</p>
+          <h1 class="text-xl font-bold text-navy">
+            {{ loadOriginDisplay(load) }} → {{ loadDestinationDisplay(load) }}
+          </h1>
+        </div>
+        <span
+          class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+          :class="statusBadgeClass(load.status)"
+        >
+          {{ load.status }}
+        </span>
+      </div>
 
-    <section
-      v-if="load.status === 'Publicado'"
-      class="mt-6 space-y-3 rounded-2xl border border-line bg-card p-4"
-    >
-      <h2 class="text-sm font-semibold text-navy">Participar</h2>
-      <div v-if="load.unitCount > 1">
-        <label class="cc-label">Unidades a posicionar</label>
-        <input
-          v-model.number="unitsCount"
-          type="number"
-          min="1"
-          :max="load.unitCount - load.confirmedUnitCount"
-          class="cc-field"
-        />
+      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
+        <h2 class="mb-3 text-sm font-semibold text-navy">Ruta y fechas</h2>
+        <dl class="space-y-2 text-sm">
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted">Recolección</dt>
+            <dd>{{ formatDate(load.pickupDate) }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted">Entrega</dt>
+            <dd>{{ formatDate(load.deliveryDate) }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted">Límite para participar</dt>
+            <dd>{{ formatDate(load.deadline) }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
+        <h2 class="mb-3 text-sm font-semibold text-navy">Mercancía y equipo</h2>
+        <dl class="space-y-2 text-sm">
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted">Equipo</dt>
+            <dd>{{ load.equipmentType }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted">Unidades</dt>
+            <dd>
+              <template v-if="load.confirmedUnitCount > 0 && load.confirmedUnitCount < load.unitCount">
+                {{ load.unitCount - load.confirmedUnitCount }} disponibles de {{ load.unitCount }}
+              </template>
+              <template v-else>{{ load.unitCount }}</template>
+            </dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted">Peso</dt>
+            <dd>{{ Math.round(load.weightKg).toLocaleString('es-MX') }} kg</dd>
+          </div>
+          <div v-if="load.merchandiseDescription">
+            <dt class="text-muted">Descripción</dt>
+            <dd class="mt-1">{{ load.merchandiseDescription }}</dd>
+          </div>
+          <div v-if="load.specialRequirements.length">
+            <dt class="text-muted">Requisitos</dt>
+            <dd class="mt-1">{{ load.specialRequirements.join(', ') }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
+        <h2 class="mb-3 text-sm font-semibold text-navy">Precio y condiciones</h2>
+        <dl class="space-y-2 text-sm">
+          <template v-if="load.assignmentMode === 'Consolidada LTL'">
+            <p class="text-brand">Cada consolidadora cotiza su propio precio</p>
+          </template>
+          <template v-else>
+            <div class="flex justify-between gap-4">
+              <dt class="text-muted">Precio ofrecido</dt>
+              <dd class="font-semibold text-navy">
+                {{ formatMoney(load.offeredPrice, load.currency) }}
+              </dd>
+            </div>
+            <div class="flex justify-between gap-4">
+              <dt class="text-muted">IVA</dt>
+              <dd>{{ load.includesVAT ? 'Incluido' : 'No incluido' }}</dd>
+            </div>
+          </template>
+          <div v-if="load.includedConcepts">
+            <dt class="text-muted">Incluye</dt>
+            <dd class="mt-1">{{ load.includedConcepts }}</dd>
+          </div>
+          <div v-if="load.allowedExtraExpenses">
+            <dt class="text-muted">Gastos extras</dt>
+            <dd class="mt-1">{{ load.allowedExtraExpenses }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted">Modalidad</dt>
+            <dd>{{ load.assignmentMode }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section
+        v-if="showPrivate"
+        class="mb-4 rounded-2xl border border-line bg-card p-4"
+      >
+        <h2 class="mb-3 text-sm font-semibold text-navy">Información operativa</h2>
+        <dl class="space-y-2 text-sm">
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted">Contacto</dt>
+            <dd>{{ load.clientContactName || '—' }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-muted">Teléfono</dt>
+            <dd>{{ load.clientContactPhone || '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-muted">Dirección origen</dt>
+            <dd class="mt-1">{{ load.exactPickupAddress || '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-muted">Dirección destino</dt>
+            <dd class="mt-1">{{ load.exactDeliveryAddress || '—' }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section
+        v-if="load.observations"
+        class="mb-4 rounded-2xl border border-line bg-card p-4"
+      >
+        <h2 class="mb-2 text-sm font-semibold text-navy">Observaciones</h2>
+        <p class="text-sm text-muted">{{ load.observations }}</p>
+      </section>
+
+      <div
+        v-if="currentOffer"
+        class="mb-4 rounded-2xl border border-blue/20 bg-blue-soft/60 px-4 py-3 text-sm"
+      >
+        Ya tienes una oferta:
+        <strong>{{ currentOffer.status }}</strong>
+        ·
+        {{ formatMoney(currentOffer.proposedPrice ?? currentOffer.amount, currentOffer.currency) }}
       </div>
-      <div>
-        <label class="cc-label">Precio propuesto / unidad</label>
-        <input v-model.number="price" type="number" class="cc-field" />
+
+      <div
+        v-if="isAssignedToMe"
+        class="mb-4 rounded-2xl border border-success/20 bg-success-soft px-4 py-3 text-sm text-success"
+      >
+        Ya estás confirmado en este viaje.
+        <RouterLink
+          :to="{ name: 'carrier-trip-detail', params: { id: load.id } }"
+          class="ml-1 font-semibold underline"
+        >
+          Ver viaje
+        </RouterLink>
       </div>
-      <div>
-        <label class="cc-label">ETA unidad (opcional)</label>
-        <input v-model="eta" type="datetime-local" class="cc-field" />
+
+      <!-- Action panels -->
+      <div v-if="canAct && panel === 'none'" class="space-y-2">
+        <button
+          v-if="load.assignmentMode === 'Tarifa Fija'"
+          type="button"
+          class="cc-btn"
+          @click="panel = 'take'"
+        >
+          Tomar carga
+        </button>
+        <button
+          v-if="load.assignmentMode === 'Subasta Inversa'"
+          type="button"
+          class="cc-btn"
+          @click="panel = 'bid'"
+        >
+          Ofertar
+        </button>
+        <button
+          v-if="load.assignmentMode === 'Confirmación Manual'"
+          type="button"
+          class="cc-btn"
+          @click="panel = 'avail'"
+        >
+          Indicar disponibilidad
+        </button>
+        <button
+          v-if="load.assignmentMode === 'Consolidada LTL'"
+          type="button"
+          class="cc-btn"
+          @click="panel = 'ltl'"
+        >
+          Enviar cotización LTL
+        </button>
       </div>
-      <div>
-        <label class="cc-label">URL de rastreo (opcional)</label>
-        <input v-model="trackingUrl" class="cc-field" />
-      </div>
-      <p v-if="resultMsg" class="text-sm text-muted">{{ resultMsg }}</p>
-      <button type="button" class="cc-btn" :disabled="busy" @click="confirm">
-        {{ busy ? 'Enviando…' : ctaLabel }}
-      </button>
-    </section>
+
+      <TakeLoadConfirmPanel
+        v-if="panel === 'take' && load"
+        :load="load"
+        @close="panel = 'none'"
+        @done="panel = 'none'"
+      />
+      <BidOfferPanel
+        v-if="panel === 'bid' && load"
+        :load="load"
+        @close="panel = 'none'"
+        @done="panel = 'none'"
+      />
+      <AvailabilityPanel
+        v-if="panel === 'avail' && load"
+        :load="load"
+        @close="panel = 'none'"
+        @done="panel = 'none'"
+      />
+      <LTLQuotePanel
+        v-if="panel === 'ltl' && load"
+        :load="load"
+        @close="panel = 'none'"
+        @done="panel = 'none'"
+      />
+    </template>
   </div>
-  <div v-else class="p-8 text-center text-muted">Carga no encontrada</div>
 </template>

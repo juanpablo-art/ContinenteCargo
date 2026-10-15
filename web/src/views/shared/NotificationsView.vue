@@ -1,63 +1,93 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { Bell } from '@lucide/vue';
+import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
-import { formatDateTime } from '@/lib/format';
-import type { NotificationType } from '@/lib/models';
 import EmptyState from '@/components/EmptyState.vue';
+import { formatDate } from '@/lib/format';
 
+const auth = useAuthStore();
 const store = useDataStore();
+const router = useRouter();
 
-const icons: Record<NotificationType, string> = {
-  new_load: '📦',
-  load_assigned: '✅',
-  outbid: '⬆',
-  load_cancelled: '❌',
-  status_changed: '🔄',
-  registration_approved: '👤',
-  registration_rejected: '⛔',
-  auction_closing_soon: '⏰',
-};
+const items = computed(() => {
+  const uid = auth.currentUser?.uuid;
+  if (!uid) return [];
+  return store.notifications
+    .filter((n) => n.userId === uid)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+});
 
-const sorted = computed(() =>
-  [...store.notifications].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
-);
+async function open(id: string, loadId?: string) {
+  await store.markNotificationRead(id);
+  if (loadId) {
+    const role = auth.currentUser?.role;
+    if (role === 'admin') {
+      void router.push({ name: 'admin-load-detail', params: { id: loadId } });
+    } else {
+      const isTrip = store.myTrips().some((t) => t.id === loadId);
+      void router.push({
+        name: isTrip ? 'carrier-trip-detail' : 'carrier-load-detail',
+        params: { id: loadId },
+      });
+    }
+  }
+}
+
+async function markAll() {
+  await store.markAllRead();
+}
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
-    <div class="flex items-end justify-between">
-      <h1 class="text-2xl font-bold text-navy">Avisos</h1>
+  <div class="mx-auto max-w-3xl px-4 py-5 md:px-6">
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <h1 class="text-xl font-bold text-navy">Avisos</h1>
       <button
-        v-if="store.unreadCount"
+        v-if="items.some((n) => !n.isRead)"
         type="button"
-        class="text-sm font-semibold text-blue"
-        @click="store.markAllRead()"
+        class="text-sm font-medium text-brand"
+        @click="markAll"
       >
-        Marcar todas leídas
+        Marcar todo leído
       </button>
     </div>
-    <ul class="mt-5 space-y-2">
-      <li
-        v-for="n in sorted"
+
+    <EmptyState
+      v-if="!items.length"
+      title="Sin avisos"
+      subtitle="Cuando haya novedades de cargas u ofertas, aparecerán aquí."
+    >
+      <template #icon><Bell class="size-6" /></template>
+    </EmptyState>
+
+    <div v-else class="space-y-2">
+      <button
+        v-for="n in items"
         :key="n.id"
-        class="cursor-pointer rounded-2xl border border-line bg-card p-4"
-        :class="n.isRead ? 'opacity-70' : 'ring-1 ring-blue/20'"
-        @click="store.markNotificationRead(n.id)"
+        type="button"
+        class="w-full rounded-2xl border px-4 py-3 text-left transition"
+        :class="
+          n.isRead
+            ? 'border-line bg-card opacity-75'
+            : 'border-blue/25 bg-blue-soft/40'
+        "
+        @click="open(n.id, n.loadId)"
       >
-        <div class="flex gap-3">
-          <span class="text-xl" aria-hidden="true">{{ icons[n.type] || '🔔' }}</span>
+        <div class="flex items-start justify-between gap-3">
           <div class="min-w-0">
             <p class="text-sm font-semibold text-navy">{{ n.title }}</p>
             <p class="mt-0.5 text-sm text-muted">{{ n.body }}</p>
-            <p class="mt-1 text-xs text-muted">{{ formatDateTime(n.createdAt) }}</p>
+            <p class="mt-1 text-[11px] text-muted">{{ formatDate(n.createdAt) }}</p>
           </div>
+          <span
+            v-if="!n.isRead"
+            class="mt-1 size-2 shrink-0 rounded-full bg-orange"
+            aria-hidden="true"
+          />
         </div>
-      </li>
-    </ul>
-    <EmptyState
-      v-if="!sorted.length"
-      title="Sin notificaciones"
-      subtitle="Cuando haya actividad aparecerá aquí."
-    />
+      </button>
+    </div>
   </div>
 </template>

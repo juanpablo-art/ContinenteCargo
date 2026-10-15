@@ -101,3 +101,11 @@ export function timeRemaining(deadline: Date): string {
   if (h > 0) return `Cierra en ${h}h ${m}m`;
   return `Cierra en ${m}m`;
 }
+
+export function unitStatusClass(status: string): string {
+  return statusBadgeClass(status);
+}
+
+export function offerStatusClass(status: string): string {
+  return statusBadgeClass(status);
+}

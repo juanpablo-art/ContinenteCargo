@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { homePathForRole, homeRouteNameForRole } from '@/lib/role-home';
-import { startAppListeners } from '@/lib/realtime';
 import type { UserRole } from '@/lib/models';
 
 const router = createRouter({
@@ -32,6 +31,7 @@ const router = createRouter({
             return homePathForRole(auth.currentUser?.role);
           },
         },
+        // Admin
         {
           path: 'admin/dashboard',
           name: 'admin-dashboard',
@@ -67,31 +67,11 @@ const router = createRouter({
         {
           path: 'admin/carriers',
           name: 'admin-carriers',
-          component: () => import('@/views/admin/AdminCarriersView.vue'),
+          component: () => import('@/views/admin/CarrierDirectoryView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['admin'] as UserRole[],
             title: 'Transportistas',
-          },
-        },
-        {
-          path: 'admin/carriers/:id',
-          name: 'admin-carrier-detail',
-          component: () => import('@/views/admin/AdminCarrierDetailView.vue'),
-          meta: {
-            requiresAuth: true,
-            roles: ['admin'] as UserRole[],
-            title: 'Transportista',
-          },
-        },
-        {
-          path: 'admin/invitations',
-          name: 'admin-invitations',
-          component: () => import('@/views/admin/AdminInvitationsView.vue'),
-          meta: {
-            requiresAuth: true,
-            roles: ['admin'] as UserRole[],
-            title: 'Invitaciones',
           },
         },
         {
@@ -100,6 +80,7 @@ const router = createRouter({
           component: () => import('@/views/admin/AdminUnitsView.vue'),
           meta: { requiresAuth: true, roles: ['admin'] as UserRole[], title: 'Unidades' },
         },
+        // Carrier / independent operator
         {
           path: 'carrier/home',
           name: 'carrier-home',
@@ -123,7 +104,7 @@ const router = createRouter({
         {
           path: 'carrier/offers',
           name: 'carrier-offers',
-          component: () => import('@/views/carrier/CarrierOffersView.vue'),
+          component: () => import('@/views/carrier/MyOffersView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
@@ -133,7 +114,7 @@ const router = createRouter({
         {
           path: 'carrier/trips',
           name: 'carrier-trips',
-          component: () => import('@/views/carrier/CarrierTripsView.vue'),
+          component: () => import('@/views/carrier/MyTripsView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
@@ -143,7 +124,7 @@ const router = createRouter({
         {
           path: 'carrier/trips/:id',
           name: 'carrier-trip-detail',
-          component: () => import('@/views/carrier/CarrierTripDetailView.vue'),
+          component: () => import('@/views/carrier/TripDetailView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
@@ -153,23 +134,14 @@ const router = createRouter({
         {
           path: 'carrier/units',
           name: 'carrier-units',
-          component: () => import('@/views/carrier/CarrierUnitsView.vue'),
+          component: () => import('@/views/carrier/MyUnitsView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
             title: 'Unidades',
           },
         },
-        {
-          path: 'carrier/availability',
-          name: 'carrier-availability',
-          component: () => import('@/views/carrier/CarrierAvailabilityView.vue'),
-          meta: {
-            requiresAuth: true,
-            roles: ['carrier', 'independent_operator'] as UserRole[],
-            title: 'Disponibilidad',
-          },
-        },
+        // Shared
         {
           path: 'notifications',
           name: 'notifications',
@@ -217,10 +189,6 @@ router.beforeEach(async (to) => {
   const roles = to.meta.roles as UserRole[] | undefined;
   if (roles?.length && auth.currentUser && !roles.includes(auth.currentUser.role)) {
     return homePathForRole(auth.currentUser.role);
-  }
-
-  if (auth.isLoggedIn && to.meta.requiresAuth) {
-    startAppListeners();
   }
 
   return true;

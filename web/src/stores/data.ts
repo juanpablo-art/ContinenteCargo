@@ -18,6 +18,7 @@ import {
   saveUnit,
   updateLoadFields,
   updateLoadForCarrierConfirmation,
+  updateLoadStatusFields,
   updateNotificationFields,
   updateOfferFields,
   updateUnitFields,
@@ -424,7 +425,12 @@ export const useDataStore = defineStore('data', {
           notes,
         ),
       );
-      await saveLoad(this.loads[idx]);
+      // Carriers must use updateData only (never full setData / saveLoad).
+      if (auth.currentUser?.role === 'admin') {
+        await saveLoad(this.loads[idx]);
+      } else {
+        await updateLoadStatusFields(loadId, status, this.loads[idx].statusHistory);
+      }
     },
 
     // ── Take load (fixed rate) ────────────────────────────────────────
