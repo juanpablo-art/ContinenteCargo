@@ -17,20 +17,15 @@ function openNotifications() {
 <template>
   <button
     type="button"
-    class="relative inline-flex size-10 items-center justify-center rounded-xl text-navy transition hover:bg-blue-soft/70"
+    class="relative inline-flex size-10 items-center justify-center rounded-full border border-line bg-card text-navy shadow-card transition hover:border-blue/30 hover:text-brand"
     aria-label="Notificaciones"
     :title="unread ? `${unread} avisos sin leer` : 'Avisos'"
     @click="openNotifications"
   >
-    <Bell class="size-5" aria-hidden="true" />
-    <span
-      class="absolute right-2 top-2 size-2 rounded-full bg-orange transition-opacity"
-      :class="unread > 0 ? 'opacity-100' : 'opacity-0'"
-      aria-hidden="true"
-    />
+    <Bell class="size-[18px]" aria-hidden="true" />
     <span
       v-if="unread > 0"
-      class="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange px-1 text-[10px] font-bold text-white"
+      class="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-orange px-1 text-[10px] font-bold text-white ring-2 ring-background"
     >
       {{ unread > 9 ? '9+' : unread }}
     </span>

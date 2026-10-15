@@ -56,27 +56,32 @@ export function statusBadgeClass(status: string): string {
     case 'Ganadora':
     case 'Disponible':
     case 'Aprobado':
+    case 'approved':
       return 'bg-success-soft text-success';
     case 'Parcial':
     case 'PendienteAprobacion':
     case 'Pendiente':
+    case 'pending_approval':
     case 'Superada':
     case 'Reservada':
       return 'bg-orange-soft text-orange';
     case 'Entregado':
     case 'Perdida':
+    case 'Fuera de servicio':
       return 'bg-slate-100 text-slate-600';
     case 'Cancelado':
     case 'Cancelada':
     case 'Rechazada':
     case 'Rechazado':
+    case 'rejected':
+    case 'suspended':
       return 'bg-danger-soft text-danger';
     case 'En tránsito':
     case 'Cargado':
     case 'En camino a recolección':
     case 'En origen':
     case 'En viaje':
-      return 'bg-amber-100 text-amber-800';
+      return 'bg-violet-50 text-violet-700';
     default:
       return 'bg-blue-soft text-navy';
   }
@@ -100,6 +105,24 @@ export function timeRemaining(deadline: Date): string {
   }
   if (h > 0) return `Cierra en ${h}h ${m}m`;
   return `Cierra en ${m}m`;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  PendienteAprobacion: 'Pendiente de aprobación',
+  pending_approval: 'Pendiente',
+  approved: 'Aprobado',
+  rejected: 'Rechazado',
+  suspended: 'Suspendido',
+};
+
+export function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status;
+}
+
+export function initials(name?: string | null): string {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'CC';
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
 export function unitStatusClass(status: string): string {

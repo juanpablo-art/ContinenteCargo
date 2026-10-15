@@ -56,6 +56,24 @@ export default {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      boxShadow: {
+        card: '0 1px 2px rgb(16 36 58 / 0.04), 0 1px 3px rgb(16 36 58 / 0.05)',
+        'card-hover': '0 2px 4px rgb(16 36 58 / 0.04), 0 10px 24px -6px rgb(16 36 58 / 0.12)',
+        elevated: '0 12px 40px -8px rgb(1 30 57 / 0.25), 0 4px 12px -4px rgb(1 30 57 / 0.12)',
+        brand: '0 1px 2px rgb(0 87 184 / 0.25), 0 4px 14px -4px rgb(0 87 184 / 0.45)',
+      },
+      keyframes: {
+        'cc-in': {
+          from: { opacity: '0', transform: 'translateY(6px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        'cc-shimmer': {
+          '100%': { transform: 'translateX(100%)' },
+        },
+      },
+      animation: {
+        'cc-in': 'cc-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both',
+      },
     },
   },
   plugins: [],

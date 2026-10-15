@@ -6,7 +6,7 @@
   :root {
     color-scheme: light;
 
-    --background: 248 249 253;
+    --background: 246 248 252;
     --foreground: 16 36 58;
 
     --card: 255 255 255;
@@ -15,15 +15,15 @@
     --primary: 0 87 184;
     --primary-foreground: 255 255 255;
 
-    --border: 228 234 242;
-    --input: 221 229 239;
+    --border: 230 235 243;
+    --input: 216 224 235;
     --ring: 0 87 184;
 
-    --radius: 0.625rem;
+    --radius: 0.75rem;
 
     --ink: 16 36 58;
-    --muted: 100 119 140;
-    --line: 228 234 242;
+    --muted: 98 115 138;
+    --line: 230 235 243;
 
     --navy: 2 47 86;
     --navy-soft: 10 63 107;
@@ -32,16 +32,16 @@
     /* Brand primary #0057B8 */
     --brand: 0 87 184;
     --blue: 0 87 184;
-    --blue-soft: 234 243 254;
+    --blue-soft: 235 243 254;
     --blue-ink: 0 70 148;
 
-    --orange: 232 111 20;
-    --orange-soft: 253 241 231;
+    --orange: 222 104 14;
+    --orange-soft: 254 243 233;
 
-    --danger: 220 38 38;
-    --danger-soft: 254 242 242;
-    --success: 5 150 105;
-    --success-soft: 236 253 245;
+    --danger: 214 41 41;
+    --danger-soft: 254 241 241;
+    --success: 4 138 96;
+    --success-soft: 232 250 241;
   }
 
   html,
@@ -50,30 +50,183 @@
     min-height: 100%;
   }
 
+  html {
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
-    @apply bg-background font-sans text-foreground antialiased;
+    @apply bg-background font-sans text-[15px] text-foreground antialiased;
     margin: 0;
+    font-feature-settings: 'ss01', 'cv11';
   }
 
   * {
     @apply border-border;
   }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: rgb(var(--brand));
+  }
+
+  ::selection {
+    background: rgb(var(--brand) / 0.15);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--brand) / 0.55);
+    outline-offset: 2px;
+  }
 }
 
 @layer components {
+  /* ---------- Layout ---------- */
+  .cc-page {
+    @apply mx-auto w-full max-w-6xl animate-cc-in px-4 pb-10 pt-5 sm:px-6 md:px-8 md:pt-8;
+  }
+
+  .cc-page-narrow {
+    @apply mx-auto w-full max-w-3xl animate-cc-in px-4 pb-10 pt-5 sm:px-6 md:pt-8;
+  }
+
+  .cc-h1 {
+    @apply text-[22px] font-bold leading-tight tracking-[-0.015em] text-navy md:text-[26px];
+  }
+
+  .cc-h2 {
+    @apply text-[15px] font-semibold tracking-[-0.005em] text-navy;
+  }
+
+  .cc-eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-muted;
+  }
+
+  .cc-card {
+    @apply rounded-2xl border border-line bg-card shadow-card;
+  }
+
+  .cc-card-interactive {
+    @apply cc-card transition duration-200 hover:-translate-y-px hover:border-blue/25 hover:shadow-card-hover;
+  }
+
+  .cc-divider {
+    @apply border-t border-line;
+  }
+
+  /* ---------- Forms ---------- */
   .cc-field {
-    @apply w-full rounded-[10px] border border-line bg-card px-3 py-3 text-[15px] text-ink outline-none transition focus:border-blue focus:ring-2 focus:ring-blue/20;
+    @apply w-full rounded-xl border border-input bg-card px-3.5 py-2.5 text-[15px] text-ink shadow-[inset_0_1px_1px_rgb(16_36_58/0.03)] outline-none transition duration-150 placeholder:text-muted/60 hover:border-[rgb(190_202_220)] focus:border-blue focus:ring-4 focus:ring-blue/10 disabled:cursor-not-allowed disabled:bg-background disabled:text-muted;
+    min-height: 2.75rem;
+  }
+
+  select.cc-field {
+    @apply appearance-none pr-10;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2362738A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.85rem center;
+  }
+
+  textarea.cc-field {
+    @apply leading-relaxed;
+    min-height: 5.5rem;
   }
 
   .cc-label {
-    @apply mb-1 block text-xs font-medium text-muted;
+    @apply mb-1.5 block text-[13px] font-medium text-ink/80;
   }
 
+  .cc-hint {
+    @apply mt-1.5 text-xs text-muted;
+  }
+
+  .cc-check {
+    @apply flex cursor-pointer items-center gap-3 rounded-xl border border-line bg-card px-3.5 py-3 text-sm text-ink transition hover:border-blue/30 has-[:checked]:border-blue/40 has-[:checked]:bg-blue-soft/50;
+  }
+
+  .cc-check input {
+    @apply size-4 shrink-0;
+  }
+
+  /* ---------- Buttons ---------- */
   .cc-btn {
-    @apply inline-flex h-12 w-full items-center justify-center rounded-[10px] bg-blue px-4 text-[15px] font-semibold text-white transition hover:bg-blue-ink disabled:cursor-not-allowed disabled:opacity-55;
+    @apply inline-flex h-11 w-full select-none items-center justify-center gap-2 rounded-xl bg-blue px-4 text-[15px] font-semibold text-white shadow-brand transition duration-150 hover:bg-blue-ink active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none;
   }
 
   .cc-btn-secondary {
-    @apply inline-flex h-12 w-full items-center justify-center rounded-[10px] border border-line bg-card px-4 text-[15px] font-semibold text-navy transition hover:bg-blue-soft/60 disabled:cursor-not-allowed disabled:opacity-55;
+    @apply inline-flex h-11 w-full select-none items-center justify-center gap-2 rounded-xl border border-input bg-card px-4 text-[15px] font-semibold text-navy shadow-card transition duration-150 hover:border-blue/30 hover:bg-blue-soft/40 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .cc-btn-ghost {
+    @apply inline-flex h-10 select-none items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-brand transition hover:bg-blue-soft/70 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .cc-btn-danger {
+    @apply inline-flex h-11 w-full select-none items-center justify-center gap-2 rounded-xl bg-danger px-4 text-[15px] font-semibold text-white shadow-[0_4px_14px_-4px_rgb(214_41_41/0.45)] transition duration-150 hover:bg-red-700 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .cc-btn-success {
+    @apply inline-flex h-11 w-full select-none items-center justify-center gap-2 rounded-xl bg-success px-4 text-[15px] font-semibold text-white shadow-[0_4px_14px_-4px_rgb(4_138_96/0.45)] transition duration-150 hover:brightness-95 active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .cc-back {
+    @apply -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-medium text-muted transition hover:bg-card hover:text-navy;
+  }
+
+  /* ---------- Chips & badges ---------- */
+  .cc-chip {
+    @apply inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-line bg-card px-3.5 text-[13px] font-medium text-ink/80 shadow-card transition hover:border-blue/30 hover:text-navy;
+  }
+
+  .cc-chip-active {
+    @apply border-navy bg-navy text-white shadow-none hover:border-navy hover:text-white;
+  }
+
+  .cc-badge {
+    @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11.5px] font-semibold leading-4;
+  }
+
+  .cc-icon-tile {
+    @apply flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-soft text-brand;
+  }
+
+  .cc-money {
+    @apply font-bold tabular-nums tracking-[-0.01em] text-navy;
+  }
+
+  /* ---------- Loading ---------- */
+  .cc-skeleton {
+    @apply relative overflow-hidden rounded-lg bg-[rgb(232_237_245)];
+  }
+
+  .cc-skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.6), transparent);
+    animation: cc-shimmer 1.4s infinite;
+  }
+
+  .cc-scroll-x {
+    @apply -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 md:mx-0 md:px-0;
+    scrollbar-width: none;
+  }
+
+  .cc-scroll-x::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes cc-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

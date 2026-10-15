@@ -75,6 +75,26 @@ const router = createRouter({
           },
         },
         {
+          path: 'admin/carriers/:id',
+          name: 'admin-carrier-detail',
+          component: () => import('@/views/admin/AdminCarrierDetailView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['admin'] as UserRole[],
+            title: 'Transportista',
+          },
+        },
+        {
+          path: 'admin/invitations',
+          name: 'admin-invitations',
+          component: () => import('@/views/admin/AdminInvitationsView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['admin'] as UserRole[],
+            title: 'Invitaciones',
+          },
+        },
+        {
           path: 'admin/units',
           name: 'admin-units',
           component: () => import('@/views/admin/AdminUnitsView.vue'),
@@ -139,6 +159,16 @@ const router = createRouter({
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
             title: 'Unidades',
+          },
+        },
+        {
+          path: 'carrier/availability',
+          name: 'carrier-availability',
+          component: () => import('@/views/carrier/CarrierAvailabilityView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['carrier', 'independent_operator'] as UserRole[],
+            title: 'Disponibilidad',
           },
         },
         // Shared

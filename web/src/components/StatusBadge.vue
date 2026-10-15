@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { loadIsFull, type Load } from '@/lib/models';
-import { statusBadgeClass } from '@/lib/format';
+import { statusBadgeClass, statusLabel } from '@/lib/format';
 
 const props = defineProps<{
   status?: string;
   load?: Load;
 }>();
 
-const label = computed(() => {
+const raw = computed(() => {
   if (
     props.load &&
     props.load.confirmedUnitCount > 0 &&
@@ -20,14 +20,12 @@ const label = computed(() => {
   return props.status || props.load?.status || '';
 });
 
-const tone = computed(() => statusBadgeClass(label.value));
+const tone = computed(() => statusBadgeClass(raw.value));
 </script>
 
 <template>
-  <span
-    class="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold"
-    :class="tone"
-  >
-    {{ label }}
+  <span class="cc-badge" :class="tone">
+    <span class="size-1.5 rounded-full bg-current opacity-80" aria-hidden="true" />
+    {{ statusLabel(raw) }}
   </span>
 </template>

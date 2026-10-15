@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useAuthStore } from '@/stores/auth';
+import ToastHost from '@/components/ToastHost.vue';
 
 const auth = useAuthStore();
 </script>
@@ -23,5 +24,6 @@ const auth = useAuthStore();
       />
     </div>
     <RouterView v-else />
+    <ToastHost />
   </div>
 </template>
