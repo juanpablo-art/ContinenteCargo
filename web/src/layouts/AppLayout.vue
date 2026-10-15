@@ -106,11 +106,14 @@ const roleLabel = computed(() => {
 const userInitials = computed(() => initials(auth.currentUser?.name));
 const unread = computed(() => store.unreadCount);
 
-const todayLabel = computed(() =>
-  new Intl.DateTimeFormat('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }).format(
-    new Date(),
-  ),
-);
+const todayLabel = computed(() => {
+  const label = new Intl.DateTimeFormat('es-MX', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date());
+  return label.charAt(0).toUpperCase() + label.slice(1);
+});
 
 const pageTitle = computed(() => {
   const title = route.meta.title;
@@ -247,7 +250,7 @@ async function logout() {
               <p class="truncate text-[15px] font-semibold leading-tight text-navy md:hidden">
                 {{ pageTitle }}
               </p>
-              <p class="hidden text-sm capitalize text-muted md:block">{{ todayLabel }}</p>
+              <p class="hidden text-sm text-muted md:block">{{ todayLabel }}</p>
             </div>
           </div>
           <div class="flex items-center gap-1.5">

@@ -143,13 +143,15 @@ async function run(id: string, action: () => Promise<unknown>, ok: string) {
                 <HandCoins class="size-[18px]" aria-hidden="true" />
               </span>
               <div class="min-w-0 flex-1">
-                <p class="truncate text-sm font-semibold text-navy">
-                  {{ item.offer.carrierName }}
-                  <span class="font-normal text-muted">&nbsp;propone&nbsp;</span>
-                  <span class="cc-money">{{
-                    formatMoney(item.offer.proposedPrice ?? item.offer.amount, item.offer.currency)
-                  }}</span>
-                  <span class="font-normal text-muted">&nbsp;/ ud</span>
+                <p class="flex flex-wrap items-baseline gap-x-1.5 text-sm font-semibold text-navy">
+                  <span class="truncate">{{ item.offer.carrierName }}</span>
+                  <span class="whitespace-nowrap">
+                    <span class="font-normal text-muted">propone&nbsp;</span>
+                    <span class="cc-money">{{
+                      formatMoney(item.offer.proposedPrice ?? item.offer.amount, item.offer.currency)
+                    }}</span>
+                    <span class="font-normal text-muted">&nbsp;/ ud</span>
+                  </span>
                 </p>
                 <p class="mt-0.5 truncate text-xs text-muted">
                   Contra-oferta · {{ item.load?.reference ?? 'Carga' }} ·

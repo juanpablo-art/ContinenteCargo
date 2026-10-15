@@ -66,10 +66,10 @@ const modeClass = computed(() => {
   <component
     :is="to ? 'router-link' : 'article'"
     :to="to"
-    class="group block overflow-hidden"
+    class="group flex h-full flex-col overflow-hidden"
     :class="to ? 'cc-card-interactive' : 'cc-card'"
   >
-    <div class="p-4 pb-3">
+    <div class="flex-1 p-4 pb-3">
       <div class="flex items-center justify-between gap-3">
         <span class="font-mono text-[11.5px] font-medium tracking-wide text-muted">
           {{ load.reference }}
@@ -127,9 +127,9 @@ const modeClass = computed(() => {
 
     <div class="flex items-center justify-between gap-3 border-t border-line bg-background/40 px-4 py-3">
       <div v-if="showPrice" class="min-w-0">
-        <p class="cc-money text-[17px] leading-tight">
+        <p class="cc-money whitespace-nowrap text-[17px] leading-tight">
           {{ formatMoney(load.offeredPrice, load.currency) }}
-          <span v-if="load.unitCount > 1" class="text-xs font-medium text-muted">/ unidad</span>
+          <span v-if="load.unitCount > 1" class="whitespace-nowrap text-xs font-medium text-muted">/ ud</span>
         </p>
         <p class="mt-0.5 text-[11px] font-medium" :class="load.includesVAT ? 'text-success' : 'text-muted'">
           {{ load.includesVAT ? 'IVA incluido' : 'Más IVA' }}

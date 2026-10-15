@@ -67,7 +67,8 @@ for (const [role, list] of Object.entries(pages)) {
       const file = `${role}-${name}-${vpName}.png`;
       if (only && !file.includes(only)) continue;
       await page.goto(BASE + url, { waitUntil: 'load' });
-      await page.waitForTimeout(1200);
+      await page.waitForSelector('main h1', { timeout: 15000 }).catch(() => {});
+      await page.waitForTimeout(900);
       await page.screenshot({ path: path.join(outDir, file), fullPage: !isMobile });
       console.log('wrote', file);
     }
