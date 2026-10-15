@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { CalendarCheck } from '@lucide/vue';
 import { useDataStore } from '@/stores/data';
 import { type Load, unitIsAvailableFor } from '@/lib/models';
 import { formatMoney } from '@/lib/format';
+import ActionPanel from '@/components/ActionPanel.vue';
+import ResultState from '@/components/ResultState.vue';
+import { toast } from '@/lib/toast';
 
 const props = defineProps<{ load: Load }>();
 const emit = defineEmits<{ close: []; done: [] }>();
@@ -34,6 +38,8 @@ async function submit() {
       proposePrice.value ? Number(priceText.value) || undefined : undefined,
     );
     done.value = true;
+  } catch (e) {
+    toast.error('No se pudo registrar', e instanceof Error ? e.message : undefined);
   } finally {
     busy.value = false;
   }
@@ -41,44 +47,50 @@ async function submit() {
 </script>
 
 <template>
-  <div class="mt-4 rounded-2xl border border-line bg-card p-4">
-    <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-base font-semibold text-navy">Indicar disponibilidad</h2>
-      <button type="button" class="text-sm text-muted" @click="emit('close')">Cancelar</button>
-    </div>
-
-    <template v-if="done">
-      <p class="rounded-xl bg-success-soft px-4 py-4 text-center text-sm font-medium text-success">
-        Disponibilidad registrada. Continente Cargo confirmará la asignación.
-      </p>
-      <button type="button" class="cc-btn mt-4 h-10 text-sm" @click="emit('done')">Listo</button>
-    </template>
+  <ActionPanel
+    title="Indicar disponibilidad"
+    :subtitle="`Referencia ${formatMoney(load.offeredPrice, load.currency)}`"
+    :icon="CalendarCheck"
+    @close="emit('close')"
+  >
+    <ResultState
+      v-if="done"
+      ok
+      title="Disponibilidad registrada"
+      body="Continente Cargo revisará tu propuesta y confirmará la asignación."
+      @action="emit('done')"
+    />
 
     <template v-else>
-      <p class="mb-3 text-sm text-muted">
-        Precio de referencia: {{ formatMoney(load.offeredPrice, load.currency) }}
-      </p>
-      <label class="cc-label">Unidad (opcional)</label>
-      <select v-model="unitId" class="cc-field mb-3">
-        <option value="">Sin unidad</option>
-        <option v-for="u in units" :key="u.id" :value="u.id">
-          {{ u.plates || u.trailerNumber || u.id.slice(0, 8) }}
-        </option>
-      </select>
-      <label class="mb-3 flex items-center gap-2 text-sm">
-        <input v-model="proposePrice" type="checkbox" class="size-4" />
-        Proponer precio distinto
+      <div>
+        <label class="cc-label" for="av-unit">Unidad (opcional)</label>
+        <select id="av-unit" v-model="unitId" class="cc-field">
+          <option value="">Sin unidad específica</option>
+          <option v-for="u in units" :key="u.id" :value="u.id">
+            {{ u.plates || u.trailerNumber || u.id.slice(0, 8) }} · {{ u.equipmentType }}
+          </option>
+        </select>
+      </div>
+      <label class="cc-check">
+        <input v-model="proposePrice" type="checkbox" />
+        Proponer un precio distinto
       </label>
-      <input
-        v-if="proposePrice"
-        v-model="priceText"
-        type="number"
-        min="0"
-        class="cc-field mb-3"
-      />
+      <div v-if="proposePrice" class="relative">
+        <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-medium text-muted">
+          {{ load.currency }} $
+        </span>
+        <input
+          v-model="priceText"
+          type="number"
+          min="0"
+          inputmode="numeric"
+          class="cc-field pl-16 font-semibold tabular-nums"
+          aria-label="Precio propuesto"
+        />
+      </div>
       <button type="button" class="cc-btn" :disabled="busy" @click="submit">
         {{ busy ? 'Enviando…' : 'Enviar disponibilidad' }}
       </button>
     </template>
-  </div>
+  </ActionPanel>
 </template>

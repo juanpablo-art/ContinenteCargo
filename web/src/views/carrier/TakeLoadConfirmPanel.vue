@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { Truck, TriangleAlert } from '@lucide/vue';
 import { useDataStore, type TakeLoadResult } from '@/stores/data';
-import {
-  loadDestinationDisplay,
-  loadOriginDisplay,
-  unitIsAvailableFor,
-  type Load,
-} from '@/lib/models';
-import { formatDate, formatMoney, toDatetimeLocalValue, fromDatetimeLocalValue } from '@/lib/format';
+import { unitIsAvailableFor, type Load } from '@/lib/models';
+import { formatMoney, toDatetimeLocalValue, fromDatetimeLocalValue } from '@/lib/format';
+import ActionPanel from '@/components/ActionPanel.vue';
+import ResultState from '@/components/ResultState.vue';
 
 const props = defineProps<{ load: Load }>();
 const emit = defineEmits<{ close: []; done: [] }>();
@@ -143,64 +141,58 @@ function resultBody(r: TakeLoadResult) {
 </script>
 
 <template>
-  <div class="mt-4 rounded-2xl border border-line bg-card p-4">
-    <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-base font-semibold text-navy">Confirmar toma de carga</h2>
-      <button type="button" class="text-sm text-muted" @click="emit('close')">Cancelar</button>
-    </div>
-
-    <template v-if="result">
-      <div
-        class="rounded-xl px-4 py-5 text-center"
-        :class="
-          result === 'success' || result === 'pendingApproval'
-            ? 'bg-success-soft text-success'
-            : 'bg-danger-soft text-danger'
-        "
-      >
-        <p class="font-semibold">{{ resultTitle(result) }}</p>
-        <p class="mt-1 text-sm opacity-90">{{ resultBody(result) }}</p>
-        <button type="button" class="cc-btn mt-4 h-10 text-sm" @click="emit('done')">
-          Listo
-        </button>
-      </div>
-    </template>
+  <ActionPanel
+    title="Confirmar toma de carga"
+    :subtitle="`${load.reference} · ${load.originCity} → ${load.destinationCity}`"
+    :icon="Truck"
+    @close="emit('close')"
+  >
+    <ResultState
+      v-if="result"
+      :ok="result === 'success' || result === 'pendingApproval'"
+      :title="resultTitle(result)"
+      :body="resultBody(result)"
+      @action="emit('done')"
+    />
 
     <template v-else>
-      <p v-if="error" class="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+      <p v-if="error" class="rounded-xl bg-danger-soft px-3.5 py-2.5 text-sm text-danger">
         {{ error }}
       </p>
 
-      <div class="mb-4 space-y-1 rounded-xl bg-background p-3 text-sm">
-        <p class="font-medium text-navy">{{ load.reference }}</p>
-        <p class="text-muted">
-          {{ loadOriginDisplay(load) }} → {{ loadDestinationDisplay(load) }}
-        </p>
-        <p class="text-muted">Recolección: {{ formatDate(load.pickupDate) }}</p>
-      </div>
-
-      <div class="mb-4 space-y-2">
-        <p class="text-sm font-semibold text-navy">Precio</p>
-        <div class="flex justify-between text-sm">
-          <span class="text-muted">Precio publicado</span>
-          <span class="font-semibold">{{ formatMoney(load.offeredPrice, load.currency) }}</span>
+      <div>
+        <div class="mb-1.5 flex items-baseline justify-between">
+          <label class="cc-label mb-0" for="take-price">Tu precio por unidad (sin IVA)</label>
+          <span class="text-xs text-muted">
+            Publicado {{ formatMoney(load.offeredPrice, load.currency) }}
+          </span>
         </div>
-        <label class="cc-label">Tu propuesta (sin IVA, por unidad)</label>
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-muted">{{ load.currency }}</span>
-          <input v-model="proposedPriceText" type="number" min="0" class="cc-field" />
+        <div class="relative">
+          <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-medium text-muted">
+            {{ load.currency }} $
+          </span>
+          <input
+            id="take-price"
+            v-model="proposedPriceText"
+            type="number"
+            min="0"
+            inputmode="numeric"
+            class="cc-field pl-16 text-lg font-semibold tabular-nums"
+          />
         </div>
         <p
           v-if="needsAdminApproval"
-          class="rounded-lg bg-orange-soft px-3 py-2 text-xs text-orange"
+          class="mt-2 flex items-start gap-2 rounded-xl bg-orange-soft px-3 py-2.5 text-xs leading-relaxed text-orange"
         >
+          <TriangleAlert class="mt-px size-4 shrink-0" aria-hidden="true" />
           Tu precio supera el máximo autorizado. Se enviará al administrador para aprobación.
         </p>
       </div>
 
-      <div v-if="load.unitCount > 1" class="mb-4">
-        <label class="cc-label">Unidades que aportas (máx. {{ maxPositionable }})</label>
+      <div v-if="load.unitCount > 1">
+        <label class="cc-label" for="take-count">Unidades que aportas (máx. {{ maxPositionable }})</label>
         <input
+          id="take-count"
           v-model.number="availableUnitCount"
           type="number"
           :min="1"
@@ -209,43 +201,50 @@ function resultBody(r: TakeLoadResult) {
         />
       </div>
 
-      <div class="mb-4">
-        <label class="cc-label">
-          Unidad {{ load.unitCount > 1 ? '(opcional)' : '*' }}
+      <div>
+        <label class="cc-label" for="take-unit">
+          Unidad {{ load.unitCount > 1 ? '(opcional)' : '' }}
         </label>
-        <select v-model="selectedUnitId" class="cc-field">
+        <select id="take-unit" v-model="selectedUnitId" class="cc-field">
           <option value="">Seleccionar…</option>
           <option v-for="u in availableUnits" :key="u.id" :value="u.id">
             {{ u.plates || u.trailerNumber || u.id.slice(0, 8) }} · {{ u.equipmentType }}
           </option>
         </select>
-        <p v-if="!availableUnits.length" class="mt-1 text-xs text-orange">
-          No tienes unidades disponibles de este tipo.
-          <RouterLink :to="{ name: 'carrier-units' }" class="font-medium text-brand underline">
+        <p v-if="!availableUnits.length" class="cc-hint text-orange">
+          No tienes unidades {{ load.equipmentType }} disponibles.
+          <RouterLink :to="{ name: 'carrier-units' }" class="font-semibold text-brand hover:underline">
             Agregar unidad
           </RouterLink>
         </p>
       </div>
 
-      <div class="mb-4 grid gap-3 sm:grid-cols-2">
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
         <div>
-          <label class="cc-label">ETA en origen</label>
-          <input v-model="unitETA" type="datetime-local" class="cc-field" />
+          <label class="cc-label" for="take-eta">ETA en origen</label>
+          <input id="take-eta" v-model="unitETA" type="datetime-local" class="cc-field" />
         </div>
         <div>
-          <label class="cc-label">URL de rastreo (opcional)</label>
-          <input v-model="trackingUrl" class="cc-field" placeholder="https://…" />
+          <label class="cc-label" for="take-track">URL de rastreo (opcional)</label>
+          <input id="take-track" v-model="trackingUrl" type="url" class="cc-field" placeholder="https://…" />
         </div>
       </div>
 
-      <div class="mb-4">
-        <label class="cc-label">Teléfono operador (opcional)</label>
-        <input v-model="operatorPhone" class="cc-field" placeholder="10 dígitos" />
+      <div>
+        <label class="cc-label" for="take-phone">Teléfono del operador (opcional)</label>
+        <input
+          id="take-phone"
+          v-model="operatorPhone"
+          type="tel"
+          inputmode="tel"
+          class="cc-field"
+          placeholder="10 dígitos"
+        />
       </div>
 
       <button
         type="button"
-        class="cc-btn"
+        class="cc-btn h-12"
         :disabled="!canConfirm || isConfirming"
         @click="confirm"
       >
@@ -254,9 +253,9 @@ function resultBody(r: TakeLoadResult) {
             ? 'Confirmando…'
             : needsAdminApproval
               ? 'Enviar propuesta al administrador'
-              : 'Confirmar – Tomar carga'
+              : 'Confirmar y tomar carga'
         }}
       </button>
     </template>
-  </div>
+  </ActionPanel>
 </template>

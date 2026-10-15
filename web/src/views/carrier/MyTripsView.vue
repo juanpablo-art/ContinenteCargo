@@ -26,8 +26,8 @@ function open(id: string) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-5 md:px-6">
-    <h1 class="mb-4 text-xl font-bold text-navy">Mis viajes</h1>
+  <div class="cc-page">
+    <h1 class="cc-h1 mb-5">Mis viajes</h1>
 
     <EmptyState
       v-if="!trips.length"
@@ -39,13 +39,13 @@ function open(id: string) {
 
     <template v-else>
       <section v-if="active.length" class="mb-8">
-        <h2 class="mb-3 text-sm font-semibold text-navy">En curso</h2>
+        <h2 class="cc-h2 mb-3">En curso</h2>
         <div class="space-y-2">
           <button
             v-for="load in active"
             :key="load.id"
             type="button"
-            class="flex w-full items-center justify-between gap-3 rounded-2xl border border-line bg-card px-4 py-3 text-left hover:border-blue/30"
+            class="flex w-full items-center justify-between gap-3 cc-card-interactive px-4 py-3 text-left"
             @click="open(load.id)"
           >
             <div class="min-w-0">
@@ -67,13 +67,13 @@ function open(id: string) {
       </section>
 
       <section v-if="past.length">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Historial</h2>
+        <h2 class="cc-h2 mb-3">Historial</h2>
         <div class="space-y-2">
           <button
             v-for="load in past"
             :key="load.id"
             type="button"
-            class="flex w-full items-center justify-between gap-3 rounded-2xl border border-line bg-card px-4 py-3 text-left opacity-80 hover:opacity-100"
+            class="flex w-full items-center justify-between gap-3 cc-card px-4 py-3 text-left opacity-80 hover:opacity-100"
             @click="open(load.id)"
           >
             <div class="min-w-0">

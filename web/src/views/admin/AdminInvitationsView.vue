@@ -66,9 +66,9 @@ async function send() {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
-    <h1 class="text-2xl font-bold text-navy">Invitaciones</h1>
-    <form class="mt-5 space-y-3 rounded-2xl border border-line bg-card p-4" @submit.prevent="send">
+  <div class="cc-page-narrow">
+    <h1 class="cc-h1">Invitaciones</h1>
+    <form class="mt-5 space-y-3 cc-card p-4 md:p-5" @submit.prevent="send">
       <input v-model="form.name" class="cc-field" placeholder="Nombre" required />
       <input v-model="form.phone" class="cc-field" placeholder="Teléfono" />
       <input v-model="form.email" type="email" class="cc-field" placeholder="Email" />
@@ -79,7 +79,7 @@ async function send() {
       <li
         v-for="i in invitations"
         :key="i.id"
-        class="rounded-xl border border-line bg-card px-3 py-2 text-sm"
+        class="cc-card rounded-xl px-3 py-2 text-sm"
       >
         <p class="font-medium text-navy">{{ i.name }}</p>
         <p class="text-xs text-muted">

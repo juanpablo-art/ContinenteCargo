@@ -159,9 +159,9 @@ async function publish() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl px-4 py-5 md:px-6">
+  <div class="cc-page-narrow">
     <template v-if="published">
-      <div class="rounded-2xl border border-line bg-card p-8 text-center">
+      <div class="cc-card p-8 text-center">
         <p class="text-sm font-medium text-success">Carga publicada</p>
         <h1 class="mt-2 text-xl font-bold text-navy">{{ publishedSummary.reference }}</h1>
         <p class="mt-2 text-sm text-muted">{{ publishedSummary.route }}</p>
@@ -187,14 +187,14 @@ async function publish() {
     </template>
 
     <template v-else>
-      <h1 class="mb-4 text-xl font-bold text-navy">Publicar carga</h1>
+      <h1 class="cc-h1 mb-5">Publicar carga</h1>
       <p v-if="error" class="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
         {{ error }}
       </p>
 
       <form class="space-y-5" @submit.prevent="publish">
         <!-- Route -->
-        <section class="rounded-2xl border border-line bg-card p-4 space-y-3">
+        <section class="cc-card p-4 md:p-5 space-y-3">
           <h2 class="text-sm font-semibold text-navy">Ruta</h2>
           <div>
             <label class="cc-label">Referencia (opcional)</label>
@@ -265,7 +265,7 @@ async function publish() {
         </section>
 
         <!-- Modality -->
-        <section class="rounded-2xl border border-line bg-card p-4 space-y-3">
+        <section class="cc-card p-4 md:p-5 space-y-3">
           <h2 class="text-sm font-semibold text-navy">Modalidad</h2>
           <div>
             <label class="cc-label">Asignación</label>
@@ -294,7 +294,7 @@ async function publish() {
         <!-- Price -->
         <section
           v-if="!isLTL"
-          class="rounded-2xl border border-line bg-card p-4 space-y-3"
+          class="cc-card p-4 md:p-5 space-y-3"
         >
           <h2 class="text-sm font-semibold text-navy">Precio</h2>
           <div class="grid gap-3 sm:grid-cols-2">
@@ -333,7 +333,7 @@ async function publish() {
         </section>
 
         <!-- Cargo -->
-        <section class="rounded-2xl border border-line bg-card p-4 space-y-3">
+        <section class="cc-card p-4 md:p-5 space-y-3">
           <h2 class="text-sm font-semibold text-navy">Mercancía</h2>
           <div>
             <label class="cc-label">Peso (kg) {{ isLTL ? '*' : '' }}</label>
@@ -371,7 +371,7 @@ async function publish() {
         <!-- Client (non-LTL) -->
         <section
           v-if="!isLTL"
-          class="rounded-2xl border border-line bg-card p-4 space-y-3"
+          class="cc-card p-4 md:p-5 space-y-3"
         >
           <h2 class="text-sm font-semibold text-navy">Cliente (privado)</h2>
           <p class="text-xs text-muted">
@@ -402,7 +402,7 @@ async function publish() {
         </section>
 
         <!-- Alerts -->
-        <section class="rounded-2xl border border-line bg-card p-4 space-y-2">
+        <section class="cc-card p-4 md:p-5 space-y-2">
           <h2 class="text-sm font-semibold text-navy">Canales de aviso</h2>
           <label class="flex items-center gap-2 text-sm"
             ><input v-model="notifyInApp" type="checkbox" class="size-4" /> En app</label

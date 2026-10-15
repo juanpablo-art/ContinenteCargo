@@ -84,6 +84,7 @@ export const useDataStore = defineStore('data', {
     users: [] as AppUser[],
     companies: [] as TransportCompany[],
     listening: false,
+    loadsReady: false,
     errorMessage: null as string | null,
   }),
 
@@ -101,7 +102,11 @@ export const useDataStore = defineStore('data', {
       this.stopListeners();
       const auth = useAuthStore();
       const user = auth.currentUser;
-      if (!user || user.uuid === 'demo-layout') return;
+      if (!user) return;
+      if (user.uuid === 'demo-layout') {
+        if (import.meta.env.DEV) void this.seedDemoData();
+        return;
+      }
 
       this.loads = [];
       this.units = [];
@@ -113,6 +118,7 @@ export const useDataStore = defineStore('data', {
       unsubs.push(
         listenToLoads((incoming) => {
           this.loads = incoming;
+          this.loadsReady = true;
         }),
       );
       unsubs.push(
@@ -173,12 +179,25 @@ export const useDataStore = defineStore('data', {
       unsubs.forEach((u) => u());
       unsubs = [];
       this.listening = false;
+      this.loadsReady = false;
       this.loads = [];
       this.offers = [];
       this.units = [];
       this.notifications = [];
       this.users = [];
       this.companies = [];
+    },
+
+    async seedDemoData() {
+      const demo = await import('@/lib/demo-data');
+      const auth = useAuthStore();
+      this.loads = demo.demoLoads();
+      this.offers = demo.demoOffers();
+      this.units = demo.demoUnits();
+      this.notifications = demo.demoNotifications();
+      this.users = auth.currentUser?.role === 'admin' ? demo.demoUsers() : [];
+      this.listening = true;
+      this.loadsReady = true;
     },
 
     // ── Helpers ───────────────────────────────────────────────────────

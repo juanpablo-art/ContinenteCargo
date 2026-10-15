@@ -143,20 +143,20 @@ async function logout() {
       />
 
       <RouterLink to="/" class="relative flex items-center gap-3 px-5 pb-6 pt-6">
-        <img
-          src="/brand/logo-mark.png"
-          alt=""
-          class="size-10 rounded-xl object-cover shadow-lg shadow-black/20 ring-1 ring-white/15"
-          width="40"
-          height="40"
-        />
-        <div class="min-w-0">
+        <span
+          class="flex size-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-inset ring-white/15"
+        >
           <img
-            src="/brand/wordmark.png"
-            alt="Continente Cargo"
-            class="h-[15px] w-auto max-w-[9.5rem] object-contain brightness-0 invert"
+            src="/brand/logo-mark.png"
+            alt=""
+            class="size-8 object-contain brightness-0 invert"
+            width="32"
+            height="32"
           />
-          <p class="mt-1 text-[11px] font-medium tracking-wide text-white/55">CONECTA</p>
+        </span>
+        <div class="min-w-0 leading-tight">
+          <p class="text-[15px] font-bold tracking-[-0.01em]">Continente</p>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Conecta</p>
         </div>
       </RouterLink>
 

@@ -92,10 +92,10 @@ async function logout() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl px-4 py-5 md:px-6">
-    <h1 class="mb-4 text-xl font-bold text-navy">Perfil</h1>
+  <div class="cc-page-narrow">
+    <h1 class="cc-h1 mb-5">Perfil</h1>
 
-    <section v-if="user" class="mb-5 rounded-2xl border border-line bg-card p-4">
+    <section v-if="user" class="mb-5 cc-card p-4 md:p-5">
       <p class="text-lg font-semibold text-navy">{{ user.name }}</p>
       <p class="text-sm text-muted">{{ roleLabel }}</p>
       <dl class="mt-4 space-y-2 text-sm">
@@ -116,7 +116,7 @@ async function logout() {
 
     <section
       v-if="isCarrier && user?.role === 'carrier'"
-      class="mb-5 rounded-2xl border border-line bg-card p-4"
+      class="mb-5 cc-card p-4 md:p-5"
     >
       <div class="flex items-center justify-between gap-3">
         <div>
@@ -137,7 +137,7 @@ async function logout() {
       </div>
     </section>
 
-    <section v-if="isCarrier" class="mb-5 rounded-2xl border border-line bg-card p-4">
+    <section v-if="isCarrier" class="mb-5 cc-card p-4 md:p-5">
       <h2 class="mb-1 text-sm font-semibold text-navy">Mis rutas</h2>
       <p class="mb-3 text-xs text-muted">
         Al definir rutas explícitas, se limpian cobertura por estados/zonas.

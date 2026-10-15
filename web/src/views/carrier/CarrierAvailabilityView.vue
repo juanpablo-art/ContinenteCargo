@@ -24,8 +24,8 @@ async function publish() {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-xl px-4 py-6 sm:px-6">
-    <h1 class="text-2xl font-bold text-navy">Publicar disponibilidad</h1>
+  <div class="cc-page-narrow">
+    <h1 class="cc-h1">Publicar disponibilidad</h1>
     <p class="mt-1 text-sm text-muted">Misma lógica que AvailabilityView en iOS</p>
     <form class="mt-5 space-y-3" @submit.prevent="publish">
       <div>

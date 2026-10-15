@@ -1,29 +1,43 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft } from '@lucide/vue';
+import { computed, nextTick, ref } from 'vue';
+import { useRoute } from 'vue-router';
+import {
+  Clock,
+  Container,
+  Layers,
+  Weight,
+  Ruler,
+  Lock,
+  Phone,
+  User,
+  CircleCheck,
+  HandCoins,
+  PackageX,
+  ChevronRight,
+} from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
-import {
-  loadDestinationDisplay,
-  loadIsOpen,
-  loadOriginDisplay,
-} from '@/lib/models';
-import { formatDate, formatMoney, statusBadgeClass } from '@/lib/format';
+import { loadIsOpen } from '@/lib/models';
+import { deadlineTone, formatDateTime, formatMoney, statusLabel, timeRemaining } from '@/lib/format';
+import PageHeader from '@/components/PageHeader.vue';
+import StatusBadge from '@/components/StatusBadge.vue';
+import RouteTimeline from '@/components/RouteTimeline.vue';
+import EmptyState from '@/components/EmptyState.vue';
 import TakeLoadConfirmPanel from '@/views/carrier/TakeLoadConfirmPanel.vue';
 import BidOfferPanel from '@/views/carrier/BidOfferPanel.vue';
 import AvailabilityPanel from '@/views/carrier/AvailabilityPanel.vue';
 import LTLQuotePanel from '@/views/carrier/LTLQuotePanel.vue';
 
 const route = useRoute();
-const router = useRouter();
 const auth = useAuthStore();
 const store = useDataStore();
 
 const loadId = computed(() => String(route.params.id));
 const load = computed(() => store.loadById(loadId.value));
 
-const panel = ref<'none' | 'take' | 'bid' | 'avail' | 'ltl'>('none');
+type Panel = 'none' | 'take' | 'bid' | 'avail' | 'ltl';
+const panel = ref<Panel>('none');
+const actionsEl = ref<HTMLElement | null>(null);
 
 const isAssignedToMe = computed(() => {
   const userId = auth.currentUser?.uuid;
@@ -45,239 +59,307 @@ const showPrivate = computed(() =>
 );
 
 const canAct = computed(
-  () => load.value && loadIsOpen(load.value) && !isAssignedToMe.value,
+  () => Boolean(load.value && loadIsOpen(load.value) && !isAssignedToMe.value),
 );
+
+const primaryAction = computed<{ panel: Panel; label: string } | null>(() => {
+  switch (load.value?.assignmentMode) {
+    case 'Tarifa Fija':
+      return { panel: 'take', label: 'Tomar carga' };
+    case 'Subasta Inversa':
+      return { panel: 'bid', label: 'Ofertar' };
+    case 'Confirmación Manual':
+      return { panel: 'avail', label: 'Indicar disponibilidad' };
+    case 'Consolidada LTL':
+      return { panel: 'ltl', label: 'Enviar cotización LTL' };
+    default:
+      return null;
+  }
+});
+
+const remainingUnits = computed(() =>
+  load.value ? load.value.unitCount - load.value.confirmedUnitCount : 0,
+);
+
+const deadlineClass = computed(() => {
+  if (!load.value) return '';
+  const tone = deadlineTone(load.value.deadline);
+  if (tone === 'danger') return 'text-danger bg-danger-soft';
+  if (tone === 'warn') return 'text-orange bg-orange-soft';
+  return 'text-ink/70 bg-background';
+});
+
+async function openPanel(p: Panel) {
+  panel.value = p;
+  await nextTick();
+  actionsEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl px-4 py-5 md:px-6">
-    <button
-      type="button"
-      class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-brand"
-      @click="router.back()"
-    >
-      <ArrowLeft class="size-4" />
-      Volver
-    </button>
-
-    <div v-if="!load" class="rounded-2xl border border-line bg-card p-8 text-center text-muted">
-      Carga no encontrada o sin acceso.
+  <div class="cc-page">
+    <div v-if="!load" class="cc-card">
+      <EmptyState
+        title="Carga no disponible"
+        subtitle="La carga no existe, ya se asignó o no está en tu cobertura."
+      >
+        <template #icon><PackageX /></template>
+        <RouterLink :to="{ name: 'carrier-home' }" class="cc-btn-secondary w-auto px-5">
+          Ver cargas disponibles
+        </RouterLink>
+      </EmptyState>
     </div>
 
     <template v-else>
-      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p class="text-xs text-muted">{{ load.reference }}</p>
-          <h1 class="text-xl font-bold text-navy">
-            {{ loadOriginDisplay(load) }} → {{ loadDestinationDisplay(load) }}
-          </h1>
-        </div>
-        <span
-          class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-          :class="statusBadgeClass(load.status)"
-        >
-          {{ load.status }}
-        </span>
-      </div>
+      <PageHeader
+        :eyebrow="load.reference"
+        :title="`${load.originCity} → ${load.destinationCity}`"
+        back
+        back-label="Cargas"
+      >
+        <template #meta>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <StatusBadge :load="load" />
+            <span class="cc-badge bg-navy/[0.06] text-navy">{{ load.assignmentMode }}</span>
+            <span
+              v-if="loadIsOpen(load)"
+              class="cc-badge"
+              :class="deadlineClass"
+            >
+              <Clock class="size-3" aria-hidden="true" />
+              {{ timeRemaining(load.deadline) }}
+            </span>
+          </div>
+        </template>
+      </PageHeader>
 
-      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Ruta y fechas</h2>
-        <dl class="space-y-2 text-sm">
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted">Recolección</dt>
-            <dd>{{ formatDate(load.pickupDate) }}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted">Entrega</dt>
-            <dd>{{ formatDate(load.deliveryDate) }}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted">Límite para participar</dt>
-            <dd>{{ formatDate(load.deadline) }}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Mercancía y equipo</h2>
-        <dl class="space-y-2 text-sm">
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted">Equipo</dt>
-            <dd>{{ load.equipmentType }}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted">Unidades</dt>
-            <dd>
-              <template v-if="load.confirmedUnitCount > 0 && load.confirmedUnitCount < load.unitCount">
-                {{ load.unitCount - load.confirmedUnitCount }} disponibles de {{ load.unitCount }}
-              </template>
-              <template v-else>{{ load.unitCount }}</template>
-            </dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted">Peso</dt>
-            <dd>{{ Math.round(load.weightKg).toLocaleString('es-MX') }} kg</dd>
-          </div>
-          <div v-if="load.merchandiseDescription">
-            <dt class="text-muted">Descripción</dt>
-            <dd class="mt-1">{{ load.merchandiseDescription }}</dd>
-          </div>
-          <div v-if="load.specialRequirements.length">
-            <dt class="text-muted">Requisitos</dt>
-            <dd class="mt-1">{{ load.specialRequirements.join(', ') }}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Precio y condiciones</h2>
-        <dl class="space-y-2 text-sm">
-          <template v-if="load.assignmentMode === 'Consolidada LTL'">
-            <p class="text-brand">Cada consolidadora cotiza su propio precio</p>
-          </template>
-          <template v-else>
-            <div class="flex justify-between gap-4">
-              <dt class="text-muted">Precio ofrecido</dt>
-              <dd class="font-semibold text-navy">
+      <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+        <!-- Summary + actions (first on mobile, right column on desktop) -->
+        <aside ref="actionsEl" class="scroll-mt-24 space-y-4 lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1">
+          <div class="cc-card overflow-hidden">
+            <div class="bg-gradient-to-br from-navy to-navy-soft p-5 text-white">
+              <p class="text-[12px] font-medium text-white/65">
+                {{ load.assignmentMode === 'Subasta Inversa' ? 'Precio de referencia' : 'Tarifa ofrecida' }}
+                <template v-if="load.unitCount > 1">· por unidad</template>
+              </p>
+              <p
+                v-if="load.assignmentMode === 'Consolidada LTL'"
+                class="mt-1 text-xl font-bold"
+              >
+                Cotiza tu precio
+              </p>
+              <p v-else class="mt-1 text-[30px] font-bold leading-none tracking-[-0.02em] tabular-nums">
                 {{ formatMoney(load.offeredPrice, load.currency) }}
-              </dd>
+              </p>
+              <p class="mt-2 text-[12.5px] text-white/70">
+                {{ load.includesVAT ? 'IVA incluido' : 'Más IVA' }}
+                <template v-if="load.assignmentMode === 'Subasta Inversa'">
+                  · Decremento mín. {{ formatMoney(load.minBidDecrement, load.currency) }}
+                </template>
+              </p>
             </div>
-            <div class="flex justify-between gap-4">
-              <dt class="text-muted">IVA</dt>
-              <dd>{{ load.includesVAT ? 'Incluido' : 'No incluido' }}</dd>
+            <dl class="grid grid-cols-2 divide-x divide-line border-b border-line text-center">
+              <div class="px-3 py-3">
+                <dt class="text-[11px] font-medium text-muted">Unidades</dt>
+                <dd class="mt-0.5 text-sm font-semibold text-navy">
+                  <template v-if="load.confirmedUnitCount > 0 && remainingUnits > 0">
+                    {{ remainingUnits }} de {{ load.unitCount }} libres
+                  </template>
+                  <template v-else>{{ load.unitCount }}</template>
+                </dd>
+              </div>
+              <div class="px-3 py-3">
+                <dt class="text-[11px] font-medium text-muted">Cierra</dt>
+                <dd class="mt-0.5 text-sm font-semibold text-navy">
+                  {{ formatDateTime(load.deadline) }}
+                </dd>
+              </div>
+            </dl>
+
+            <div class="space-y-3 p-4">
+              <div
+                v-if="isAssignedToMe"
+                class="flex items-start gap-3 rounded-xl bg-success-soft p-3 text-sm"
+              >
+                <CircleCheck class="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />
+                <div>
+                  <p class="font-semibold text-success">Estás confirmado en este viaje</p>
+                  <RouterLink
+                    :to="{ name: 'carrier-trip-detail', params: { id: load.id } }"
+                    class="mt-1 inline-flex items-center gap-0.5 font-semibold text-navy hover:text-brand"
+                  >
+                    Ver viaje <ChevronRight class="size-4" aria-hidden="true" />
+                  </RouterLink>
+                </div>
+              </div>
+
+              <div
+                v-else-if="currentOffer"
+                class="flex items-start gap-3 rounded-xl bg-blue-soft/70 p-3 text-sm"
+              >
+                <HandCoins class="mt-0.5 size-5 shrink-0 text-brand" aria-hidden="true" />
+                <div>
+                  <p class="font-semibold text-navy">
+                    Tu oferta: {{ statusLabel(currentOffer.status) }}
+                  </p>
+                  <p class="mt-0.5 text-muted">
+                    {{ formatMoney(currentOffer.proposedPrice ?? currentOffer.amount, currentOffer.currency) }}
+                    · enviada {{ formatDateTime(currentOffer.submittedAt) }}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                v-if="canAct && panel === 'none' && primaryAction"
+                type="button"
+                class="cc-btn h-12"
+                @click="openPanel(primaryAction.panel)"
+              >
+                {{ primaryAction.label }}
+              </button>
+              <p
+                v-else-if="!canAct && !isAssignedToMe"
+                class="text-center text-[13px] text-muted"
+              >
+                Esta carga ya no recibe participaciones.
+              </p>
             </div>
-          </template>
-          <div v-if="load.includedConcepts">
-            <dt class="text-muted">Incluye</dt>
-            <dd class="mt-1">{{ load.includedConcepts }}</dd>
           </div>
-          <div v-if="load.allowedExtraExpenses">
-            <dt class="text-muted">Gastos extras</dt>
-            <dd class="mt-1">{{ load.allowedExtraExpenses }}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted">Modalidad</dt>
-            <dd>{{ load.assignmentMode }}</dd>
-          </div>
-        </dl>
-      </section>
 
-      <section
-        v-if="showPrivate"
-        class="mb-4 rounded-2xl border border-line bg-card p-4"
-      >
-        <h2 class="mb-3 text-sm font-semibold text-navy">Información operativa</h2>
-        <dl class="space-y-2 text-sm">
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted">Contacto</dt>
-            <dd>{{ load.clientContactName || '—' }}</dd>
-          </div>
-          <div class="flex justify-between gap-4">
-            <dt class="text-muted">Teléfono</dt>
-            <dd>{{ load.clientContactPhone || '—' }}</dd>
-          </div>
-          <div>
-            <dt class="text-muted">Dirección origen</dt>
-            <dd class="mt-1">{{ load.exactPickupAddress || '—' }}</dd>
-          </div>
-          <div>
-            <dt class="text-muted">Dirección destino</dt>
-            <dd class="mt-1">{{ load.exactDeliveryAddress || '—' }}</dd>
-          </div>
-        </dl>
-      </section>
+          <TakeLoadConfirmPanel
+            v-if="panel === 'take'"
+            :load="load"
+            @close="panel = 'none'"
+            @done="panel = 'none'"
+          />
+          <BidOfferPanel
+            v-if="panel === 'bid'"
+            :load="load"
+            @close="panel = 'none'"
+            @done="panel = 'none'"
+          />
+          <AvailabilityPanel
+            v-if="panel === 'avail'"
+            :load="load"
+            @close="panel = 'none'"
+            @done="panel = 'none'"
+          />
+          <LTLQuotePanel
+            v-if="panel === 'ltl'"
+            :load="load"
+            @close="panel = 'none'"
+            @done="panel = 'none'"
+          />
+        </aside>
 
-      <section
-        v-if="load.observations"
-        class="mb-4 rounded-2xl border border-line bg-card p-4"
-      >
-        <h2 class="mb-2 text-sm font-semibold text-navy">Observaciones</h2>
-        <p class="text-sm text-muted">{{ load.observations }}</p>
-      </section>
+        <!-- Details -->
+        <div class="min-w-0 space-y-4 lg:col-start-1 lg:row-start-1">
+          <section class="cc-card p-5">
+            <h2 class="cc-h2 mb-4">Ruta</h2>
+            <RouteTimeline
+              :origin-city="load.originCity"
+              :origin-state="load.originState"
+              :destination-city="load.destinationCity"
+              :destination-state="load.destinationState"
+              :pickup-date="load.pickupDate"
+              :delivery-date="load.deliveryDate"
+              :pickup-address="showPrivate ? load.exactPickupAddress : undefined"
+              :delivery-address="showPrivate ? load.exactDeliveryAddress : undefined"
+            />
+          </section>
 
-      <div
-        v-if="currentOffer"
-        class="mb-4 rounded-2xl border border-blue/20 bg-blue-soft/60 px-4 py-3 text-sm"
-      >
-        Ya tienes una oferta:
-        <strong>{{ currentOffer.status }}</strong>
-        ·
-        {{ formatMoney(currentOffer.proposedPrice ?? currentOffer.amount, currentOffer.currency) }}
+          <section class="cc-card p-5">
+            <h2 class="cc-h2 mb-4">Mercancía y equipo</h2>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div class="rounded-xl bg-background p-3">
+                <Container class="size-4 text-muted" aria-hidden="true" />
+                <p class="mt-2 text-[11px] font-medium text-muted">Equipo</p>
+                <p class="text-sm font-semibold text-navy">{{ load.equipmentType }}</p>
+              </div>
+              <div class="rounded-xl bg-background p-3">
+                <Layers class="size-4 text-muted" aria-hidden="true" />
+                <p class="mt-2 text-[11px] font-medium text-muted">Unidades</p>
+                <p class="text-sm font-semibold text-navy">{{ load.unitCount }}</p>
+              </div>
+              <div class="rounded-xl bg-background p-3">
+                <Weight class="size-4 text-muted" aria-hidden="true" />
+                <p class="mt-2 text-[11px] font-medium text-muted">Peso</p>
+                <p class="text-sm font-semibold text-navy">
+                  {{ Math.round(load.weightKg).toLocaleString('es-MX') }} kg
+                </p>
+              </div>
+              <div class="rounded-xl bg-background p-3">
+                <Ruler class="size-4 text-muted" aria-hidden="true" />
+                <p class="mt-2 text-[11px] font-medium text-muted">Medidas</p>
+                <p class="text-sm font-semibold text-navy">
+                  {{ load.measurementsDescription || '—' }}
+                </p>
+              </div>
+            </div>
+            <div v-if="load.merchandiseDescription" class="mt-4">
+              <p class="text-[13px] font-medium text-muted">Descripción</p>
+              <p class="mt-1 text-sm text-ink">{{ load.merchandiseDescription }}</p>
+            </div>
+            <div v-if="load.specialRequirements.length" class="mt-4">
+              <p class="text-[13px] font-medium text-muted">Requisitos especiales</p>
+              <div class="mt-2 flex flex-wrap gap-1.5">
+                <span
+                  v-for="req in load.specialRequirements"
+                  :key="req"
+                  class="cc-badge bg-orange-soft text-orange"
+                >
+                  {{ req }}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <section
+            v-if="load.includedConcepts || load.allowedExtraExpenses || load.observations"
+            class="cc-card p-5"
+          >
+            <h2 class="cc-h2 mb-2">Condiciones</h2>
+            <dl>
+              <div v-if="load.includedConcepts" class="border-b border-line/70 py-3 last:border-0">
+                <dt class="text-[13px] font-medium text-muted">Incluye</dt>
+                <dd class="mt-1 text-sm text-ink">{{ load.includedConcepts }}</dd>
+              </div>
+              <div v-if="load.allowedExtraExpenses" class="border-b border-line/70 py-3 last:border-0">
+                <dt class="text-[13px] font-medium text-muted">Gastos extra permitidos</dt>
+                <dd class="mt-1 text-sm text-ink">{{ load.allowedExtraExpenses }}</dd>
+              </div>
+              <div v-if="load.observations" class="py-3">
+                <dt class="text-[13px] font-medium text-muted">Observaciones</dt>
+                <dd class="mt-1 text-sm text-ink">{{ load.observations }}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section v-if="showPrivate" class="cc-card p-5">
+            <h2 class="cc-h2 mb-3">Contacto del cliente</h2>
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="flex items-center gap-3 rounded-xl bg-background p-3">
+                <User class="size-4 text-muted" aria-hidden="true" />
+                <span class="text-sm font-medium text-navy">{{ load.clientContactName || '—' }}</span>
+              </div>
+              <a
+                :href="load.clientContactPhone ? `tel:${load.clientContactPhone}` : undefined"
+                class="flex items-center gap-3 rounded-xl bg-background p-3 transition hover:bg-blue-soft/60"
+              >
+                <Phone class="size-4 text-muted" aria-hidden="true" />
+                <span class="text-sm font-medium text-navy">{{ load.clientContactPhone || '—' }}</span>
+              </a>
+            </div>
+          </section>
+          <div
+            v-else
+            class="flex items-center gap-3 rounded-2xl border border-dashed border-line px-4 py-3.5 text-[13px] text-muted"
+          >
+            <Lock class="size-4 shrink-0" aria-hidden="true" />
+            Las direcciones exactas y el contacto del cliente se muestran al confirmar tu participación.
+          </div>
+        </div>
       </div>
-
-      <div
-        v-if="isAssignedToMe"
-        class="mb-4 rounded-2xl border border-success/20 bg-success-soft px-4 py-3 text-sm text-success"
-      >
-        Ya estás confirmado en este viaje.
-        <RouterLink
-          :to="{ name: 'carrier-trip-detail', params: { id: load.id } }"
-          class="ml-1 font-semibold underline"
-        >
-          Ver viaje
-        </RouterLink>
-      </div>
-
-      <!-- Action panels -->
-      <div v-if="canAct && panel === 'none'" class="space-y-2">
-        <button
-          v-if="load.assignmentMode === 'Tarifa Fija'"
-          type="button"
-          class="cc-btn"
-          @click="panel = 'take'"
-        >
-          Tomar carga
-        </button>
-        <button
-          v-if="load.assignmentMode === 'Subasta Inversa'"
-          type="button"
-          class="cc-btn"
-          @click="panel = 'bid'"
-        >
-          Ofertar
-        </button>
-        <button
-          v-if="load.assignmentMode === 'Confirmación Manual'"
-          type="button"
-          class="cc-btn"
-          @click="panel = 'avail'"
-        >
-          Indicar disponibilidad
-        </button>
-        <button
-          v-if="load.assignmentMode === 'Consolidada LTL'"
-          type="button"
-          class="cc-btn"
-          @click="panel = 'ltl'"
-        >
-          Enviar cotización LTL
-        </button>
-      </div>
-
-      <TakeLoadConfirmPanel
-        v-if="panel === 'take' && load"
-        :load="load"
-        @close="panel = 'none'"
-        @done="panel = 'none'"
-      />
-      <BidOfferPanel
-        v-if="panel === 'bid' && load"
-        :load="load"
-        @close="panel = 'none'"
-        @done="panel = 'none'"
-      />
-      <AvailabilityPanel
-        v-if="panel === 'avail' && load"
-        :load="load"
-        @close="panel = 'none'"
-        @done="panel = 'none'"
-      />
-      <LTLQuotePanel
-        v-if="panel === 'ltl' && load"
-        :load="load"
-        @close="panel = 'none'"
-        @done="panel = 'none'"
-      />
     </template>
   </div>
 </template>

@@ -33,7 +33,7 @@ function ownerName(ownerId: string) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-5 md:px-6">
+  <div class="cc-page">
     <h1 class="mb-1 text-xl font-bold text-navy">Unidades</h1>
     <p class="mb-4 text-sm text-muted">Disponibilidad de flota en la red</p>
 
@@ -78,7 +78,7 @@ function ownerName(ownerId: string) {
       <article
         v-for="unit in units"
         :key="unit.id"
-        class="rounded-2xl border border-line bg-card p-4"
+        class="cc-card p-4 md:p-5"
       >
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div>

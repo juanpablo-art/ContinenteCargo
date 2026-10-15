@@ -121,10 +121,10 @@ async function setStatus(id: string, st: UnitStatus) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-5 md:px-6">
+  <div class="cc-page">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h1 class="text-xl font-bold text-navy">Mis unidades</h1>
+        <h1 class="cc-h1">Mis unidades</h1>
         <p class="text-sm text-muted">Flota y disponibilidad</p>
       </div>
       <button
@@ -137,7 +137,7 @@ async function setStatus(id: string, st: UnitStatus) {
       </button>
     </div>
 
-    <div v-if="showForm" class="mb-5 rounded-2xl border border-line bg-card p-4 space-y-3">
+    <div v-if="showForm" class="mb-5 cc-card p-4 md:p-5 space-y-3">
       <h2 class="text-sm font-semibold text-navy">
         {{ editingId ? 'Editar unidad' : 'Nueva unidad' }}
       </h2>
@@ -214,7 +214,7 @@ async function setStatus(id: string, st: UnitStatus) {
       <article
         v-for="unit in units"
         :key="unit.id"
-        class="rounded-2xl border border-line bg-card p-4"
+        class="cc-card p-4 md:p-5"
       >
         <div class="flex flex-wrap items-start justify-between gap-2">
           <div>

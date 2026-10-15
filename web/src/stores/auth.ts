@@ -87,7 +87,7 @@ export const useAuthStore = defineStore('auth', {
           ) {
             this.currentUser = {
               uuid: 'demo-layout',
-              name: demoRole === 'admin' ? 'Admin Demo' : 'Carrier Demo',
+              name: demoRole === 'admin' ? 'Mariana López' : 'Transportes del Norte',
               email: 'demo@continente.local',
               phone: '0000000000',
               role: demoRole,
@@ -99,6 +99,7 @@ export const useAuthStore = defineStore('auth', {
               coverageZones: [],
               coverageEquipmentTypes: [],
             };
+            void dataStore().then((d) => d.startListeners());
             return;
           }
         }

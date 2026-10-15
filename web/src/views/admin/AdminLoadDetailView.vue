@@ -83,7 +83,7 @@ async function rejectCounter(id: string) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl px-4 py-5 md:px-6">
+  <div class="cc-page-narrow">
     <button
       type="button"
       class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-brand"
@@ -93,7 +93,7 @@ async function rejectCounter(id: string) {
       Volver
     </button>
 
-    <div v-if="!load" class="rounded-2xl border border-line bg-card p-8 text-center text-muted">
+    <div v-if="!load" class="cc-card p-8 text-center text-muted">
       Carga no encontrada.
     </div>
 
@@ -101,7 +101,7 @@ async function rejectCounter(id: string) {
       <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p class="text-xs text-muted">{{ load.reference }}</p>
-          <h1 class="text-xl font-bold text-navy">
+          <h1 class="cc-h1">
             {{ loadOriginDisplay(load) }} → {{ loadDestinationDisplay(load) }}
           </h1>
         </div>
@@ -117,8 +117,8 @@ async function rejectCounter(id: string) {
         {{ message }}
       </p>
 
-      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Ruta y fechas</h2>
+      <section class="mb-4 cc-card p-4 md:p-5">
+        <h2 class="cc-h2 mb-3">Ruta y fechas</h2>
         <dl class="space-y-2 text-sm">
           <div class="flex justify-between gap-4">
             <dt class="text-muted">Recolección</dt>
@@ -139,8 +139,8 @@ async function rejectCounter(id: string) {
         </dl>
       </section>
 
-      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Precio y mercancía</h2>
+      <section class="mb-4 cc-card p-4 md:p-5">
+        <h2 class="cc-h2 mb-3">Precio y mercancía</h2>
         <dl class="space-y-2 text-sm">
           <div class="flex justify-between gap-4">
             <dt class="text-muted">Precio ofrecido</dt>
@@ -174,8 +174,8 @@ async function rejectCounter(id: string) {
         </dl>
       </section>
 
-      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Información operativa</h2>
+      <section class="mb-4 cc-card p-4 md:p-5">
+        <h2 class="cc-h2 mb-3">Información operativa</h2>
         <dl class="space-y-2 text-sm">
           <div class="flex justify-between gap-4">
             <dt class="text-muted">Contacto</dt>
@@ -197,8 +197,8 @@ async function rejectCounter(id: string) {
       </section>
 
       <!-- Offers -->
-      <section v-if="offers.length" class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Ofertas ({{ offers.length }})</h2>
+      <section v-if="offers.length" class="mb-4 cc-card p-4 md:p-5">
+        <h2 class="cc-h2 mb-3">Ofertas ({{ offers.length }})</h2>
         <div class="space-y-3">
           <div
             v-for="offer in offers"
@@ -276,9 +276,9 @@ async function rejectCounter(id: string) {
       <!-- Status history -->
       <section
         v-if="load.statusHistory.length"
-        class="mb-4 rounded-2xl border border-line bg-card p-4"
+        class="mb-4 cc-card p-4 md:p-5"
       >
-        <h2 class="mb-3 text-sm font-semibold text-navy">Historial</h2>
+        <h2 class="cc-h2 mb-3">Historial</h2>
         <ul class="space-y-2 text-sm">
           <li
             v-for="sc in [...load.statusHistory].reverse()"
@@ -298,8 +298,8 @@ async function rejectCounter(id: string) {
       </section>
 
       <!-- Admin actions -->
-      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Acciones</h2>
+      <section class="mb-4 cc-card p-4 md:p-5">
+        <h2 class="cc-h2 mb-3">Acciones</h2>
         <div class="mb-3 flex flex-wrap gap-2">
           <button
             v-for="st in nextStatuses"

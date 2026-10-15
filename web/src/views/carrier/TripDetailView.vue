@@ -59,7 +59,7 @@ async function advance() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl px-4 py-5 md:px-6">
+  <div class="cc-page-narrow">
     <button
       type="button"
       class="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-brand"
@@ -69,7 +69,7 @@ async function advance() {
       Volver
     </button>
 
-    <div v-if="!load" class="rounded-2xl border border-line bg-card p-8 text-center text-muted">
+    <div v-if="!load" class="cc-card p-8 text-center text-muted">
       Viaje no encontrado.
     </div>
 
@@ -77,7 +77,7 @@ async function advance() {
       <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <p class="text-xs text-muted">{{ load.reference }}</p>
-          <h1 class="text-xl font-bold text-navy">
+          <h1 class="cc-h1">
             {{ loadOriginDisplay(load) }} → {{ loadDestinationDisplay(load) }}
           </h1>
         </div>
@@ -94,8 +94,8 @@ async function advance() {
       </p>
 
       <!-- Progress -->
-      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Progreso</h2>
+      <section class="mb-4 cc-card p-4 md:p-5">
+        <h2 class="cc-h2 mb-3">Progreso</h2>
         <ol class="space-y-2">
           <li
             v-for="(st, i) in carrierProgressStatuses"
@@ -133,8 +133,8 @@ async function advance() {
         </button>
       </section>
 
-      <section class="mb-4 rounded-2xl border border-line bg-card p-4">
-        <h2 class="mb-3 text-sm font-semibold text-navy">Detalle</h2>
+      <section class="mb-4 cc-card p-4 md:p-5">
+        <h2 class="cc-h2 mb-3">Detalle</h2>
         <dl class="space-y-2 text-sm">
           <div class="flex justify-between gap-4">
             <dt class="text-muted">Recolección</dt>
@@ -177,9 +177,9 @@ async function advance() {
 
       <section
         v-if="showPrivate"
-        class="mb-4 rounded-2xl border border-line bg-card p-4"
+        class="mb-4 cc-card p-4 md:p-5"
       >
-        <h2 class="mb-3 text-sm font-semibold text-navy">Información operativa</h2>
+        <h2 class="cc-h2 mb-3">Información operativa</h2>
         <dl class="space-y-2 text-sm">
           <div class="flex justify-between gap-4">
             <dt class="text-muted">Contacto</dt>
@@ -211,9 +211,9 @@ async function advance() {
 
       <section
         v-if="load.statusHistory.length"
-        class="mb-4 rounded-2xl border border-line bg-card p-4"
+        class="mb-4 cc-card p-4 md:p-5"
       >
-        <h2 class="mb-3 text-sm font-semibold text-navy">Historial</h2>
+        <h2 class="cc-h2 mb-3">Historial</h2>
         <ul class="space-y-2 text-sm">
           <li
             v-for="sc in [...load.statusHistory].reverse()"

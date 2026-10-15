@@ -11,10 +11,10 @@ const user = computed(() => store.users.find((u) => u.uuid === String(route.para
 </script>
 
 <template>
-  <div v-if="user" class="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
+  <div v-if="user" class="cc-page-narrow">
     <button type="button" class="mb-3 text-sm text-blue" @click="router.back()">← Volver</button>
-    <h1 class="text-2xl font-bold text-navy">{{ user.name }}</h1>
-    <dl class="mt-5 rounded-2xl border border-line bg-card p-4">
+    <h1 class="cc-h1">{{ user.name }}</h1>
+    <dl class="mt-5 cc-card p-4 md:p-5">
       <InfoRow label="Rol" :value="user.role" />
       <InfoRow label="Status" :value="user.status" />
       <InfoRow label="Email" :value="user.email" />
@@ -23,12 +23,12 @@ const user = computed(() => store.users.find((u) => u.uuid === String(route.para
       <InfoRow label="Estados" :value="user.coverageStates.join(', ') || '—'" />
     </dl>
     <section class="mt-6">
-      <h2 class="mb-2 text-sm font-semibold uppercase text-muted">Rutas</h2>
+      <h2 class="cc-eyebrow mb-2">Rutas</h2>
       <ul class="space-y-2">
         <li
           v-for="r in user.routes"
           :key="r.id"
-          class="rounded-xl border border-line bg-card px-3 py-2 text-sm"
+          class="cc-card rounded-xl px-3 py-2 text-sm"
         >
           {{ r.originState }} {{ r.bidirectional ? '↔' : '→' }} {{ r.destinationState }}
         </li>

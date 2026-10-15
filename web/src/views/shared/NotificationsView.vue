@@ -41,9 +41,9 @@ async function markAll() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl px-4 py-5 md:px-6">
+  <div class="cc-page-narrow">
     <div class="mb-4 flex items-center justify-between gap-3">
-      <h1 class="text-xl font-bold text-navy">Avisos</h1>
+      <h1 class="cc-h1">Avisos</h1>
       <button
         v-if="items.some((n) => !n.isRead)"
         type="button"

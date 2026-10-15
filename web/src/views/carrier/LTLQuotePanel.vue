@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { Boxes } from '@lucide/vue';
 import { useDataStore } from '@/stores/data';
 import type { Load } from '@/lib/models';
+import ActionPanel from '@/components/ActionPanel.vue';
+import ResultState from '@/components/ResultState.vue';
 
 const props = defineProps<{ load: Load }>();
 const emit = defineEmits<{ close: []; done: [] }>();
@@ -23,6 +26,8 @@ async function submit() {
       notes.value.trim(),
     );
     if (!ok.value) failed.value = true;
+  } catch {
+    failed.value = true;
   } finally {
     busy.value = false;
   }
@@ -30,41 +35,65 @@ async function submit() {
 </script>
 
 <template>
-  <div class="mt-4 rounded-2xl border border-line bg-card p-4">
-    <div class="mb-3 flex items-center justify-between">
-      <h2 class="text-base font-semibold text-navy">Cotización LTL</h2>
-      <button type="button" class="text-sm text-muted" @click="emit('close')">Cancelar</button>
-    </div>
-
-    <template v-if="ok">
-      <p class="rounded-xl bg-success-soft px-4 py-4 text-center text-sm font-medium text-success">
-        Cotización enviada. El administrador confirmará al ganador.
-      </p>
-      <button type="button" class="cc-btn mt-4 h-10 text-sm" @click="emit('done')">Listo</button>
-    </template>
+  <ActionPanel
+    title="Cotización LTL"
+    subtitle="Cada consolidadora cotiza su propio precio"
+    :icon="Boxes"
+    @close="emit('close')"
+  >
+    <ResultState
+      v-if="ok"
+      ok
+      title="Cotización enviada"
+      body="El administrador revisará las cotizaciones y confirmará al ganador."
+      @action="emit('done')"
+    />
 
     <template v-else>
-      <p v-if="failed" class="mb-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+      <p v-if="failed" class="rounded-xl bg-danger-soft px-3.5 py-2.5 text-sm text-danger">
         No se pudo enviar. ¿Ya cotizaste esta carga o el plazo cerró?
       </p>
-      <p v-if="load.measurementsDescription" class="mb-2 text-sm text-muted">
-        Medidas: {{ load.measurementsDescription }}
-      </p>
-      <p class="mb-3 text-sm text-muted">
-        Peso: {{ Math.round(load.weightKg).toLocaleString('es-MX') }} kg
-      </p>
-      <label class="cc-label">Tu cotización ({{ load.currency }})</label>
-      <input v-model="amountText" type="number" min="0" class="cc-field mb-3" />
-      <label class="cc-label">Notas</label>
-      <textarea v-model="notes" class="cc-field mb-3 min-h-[72px]" />
-      <button
-        type="button"
-        class="cc-btn"
-        :disabled="busy || !amountText"
-        @click="submit"
-      >
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        <div class="rounded-xl bg-background px-3 py-2.5">
+          <p class="text-[11px] font-medium text-muted">Peso</p>
+          <p class="font-semibold text-navy">
+            {{ Math.round(load.weightKg).toLocaleString('es-MX') }} kg
+          </p>
+        </div>
+        <div class="rounded-xl bg-background px-3 py-2.5">
+          <p class="text-[11px] font-medium text-muted">Medidas</p>
+          <p class="truncate font-semibold text-navy">{{ load.measurementsDescription || '—' }}</p>
+        </div>
+      </div>
+      <div>
+        <label class="cc-label" for="ltl-amount">Tu cotización</label>
+        <div class="relative">
+          <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-medium text-muted">
+            {{ load.currency }} $
+          </span>
+          <input
+            id="ltl-amount"
+            v-model="amountText"
+            type="number"
+            min="0"
+            inputmode="numeric"
+            class="cc-field pl-16 font-semibold tabular-nums"
+            placeholder="0"
+          />
+        </div>
+      </div>
+      <div>
+        <label class="cc-label" for="ltl-notes">Notas</label>
+        <textarea
+          id="ltl-notes"
+          v-model="notes"
+          class="cc-field"
+          placeholder="Tiempo de tránsito, condiciones, etc."
+        />
+      </div>
+      <button type="button" class="cc-btn" :disabled="busy || !amountText" @click="submit">
         {{ busy ? 'Enviando…' : 'Enviar cotización' }}
       </button>
     </template>
-  </div>
+  </ActionPanel>
 </template>

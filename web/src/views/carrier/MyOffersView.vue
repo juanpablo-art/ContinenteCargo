@@ -26,7 +26,7 @@ function open(loadId: string) {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-4 py-5 md:px-6">
+  <div class="cc-page">
     <h1 class="mb-1 text-xl font-bold text-navy">Mis ofertas</h1>
     <p class="mb-4 text-sm text-muted">Ofertas activas y pendientes de aprobación</p>
 
@@ -43,7 +43,7 @@ function open(loadId: string) {
         v-for="row in rows"
         :key="row.offer.id"
         type="button"
-        class="w-full rounded-2xl border border-line bg-card p-4 text-left hover:border-blue/30"
+        class="w-full cc-card-interactive p-4 text-left"
         @click="row.load && open(row.load.id)"
       >
         <div class="flex flex-wrap items-start justify-between gap-2">
