@@ -17,7 +17,7 @@ import {
 } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
-import { loadIsOpen } from '@/lib/models';
+import { loadIsFull, loadIsOpen } from '@/lib/models';
 import { deadlineTone, formatDateTime, formatMoney, statusLabel, timeRemaining } from '@/lib/format';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusBadge from '@/components/StatusBadge.vue';
@@ -39,13 +39,29 @@ type Panel = 'none' | 'take' | 'bid' | 'avail' | 'ltl';
 const panel = ref<Panel>('none');
 const actionsEl = ref<HTMLElement | null>(null);
 
-const isAssignedToMe = computed(() => {
+const alreadyConfirmed = computed(() => {
   const userId = auth.currentUser?.uuid;
   if (!userId || !load.value) return false;
-  return (
-    load.value.confirmedCarrierIds.includes(userId) ||
-    load.value.assignedCarrierId === userId
-  );
+  return load.value.confirmedCarrierIds.includes(userId);
+});
+
+/** Single-unit (or a full multi-unit load) cannot be confirmed again. */
+const blockedBecauseConfirmed = computed(() => {
+  if (!load.value || !alreadyConfirmed.value) return false;
+  return load.value.unitCount <= 1 || loadIsFull(load.value);
+});
+
+const showConfirmedLock = computed(() => {
+  if (!load.value) return false;
+  if (load.value.status !== 'Publicado') {
+    const userId = auth.currentUser?.uuid;
+    return Boolean(
+      userId &&
+        (load.value.confirmedCarrierIds.includes(userId) ||
+          load.value.assignedCarrierId === userId),
+    );
+  }
+  return blockedBecauseConfirmed.value;
 });
 
 const currentOffer = computed(() => {
@@ -54,27 +70,50 @@ const currentOffer = computed(() => {
   return store.offersForLoad(load.value.id).find((o) => o.carrierId === userId) ?? null;
 });
 
+const accountPending = computed(
+  () =>
+    Boolean(auth.currentUser) &&
+    auth.currentUser?.status !== 'approved' &&
+    Boolean(load.value && load.value.status === 'Publicado' && loadIsOpen(load.value)) &&
+    !blockedBecauseConfirmed.value,
+);
+
 const showPrivate = computed(() =>
   load.value ? store.canSeePrivateFields(load.value) : false,
 );
 
-const canAct = computed(
-  () => Boolean(load.value && loadIsOpen(load.value) && !isAssignedToMe.value),
-);
+const canAct = computed(() => {
+  if (!load.value || !loadIsOpen(load.value) || blockedBecauseConfirmed.value) return false;
+  if (auth.currentUser?.status !== 'approved') return false;
+  if (load.value.assignmentMode === 'Consolidada LTL' && currentOffer.value) return false;
+  return true;
+});
 
 const primaryAction = computed<{ panel: Panel; label: string } | null>(() => {
   switch (load.value?.assignmentMode) {
     case 'Tarifa Fija':
       return { panel: 'take', label: 'Tomar carga' };
     case 'Subasta Inversa':
-      return { panel: 'bid', label: 'Ofertar' };
+      return {
+        panel: 'bid',
+        label: currentOffer.value ? 'Mejorar mi oferta' : 'Presentar oferta',
+      };
     case 'Confirmación Manual':
       return { panel: 'avail', label: 'Indicar disponibilidad' };
     case 'Consolidada LTL':
-      return { panel: 'ltl', label: 'Enviar cotización LTL' };
+      return { panel: 'ltl', label: 'Cotizar precio LTL' };
     default:
       return null;
   }
+});
+
+const bestBid = computed(() => {
+  if (!load.value) return null;
+  const active = store
+    .offersForLoad(load.value.id)
+    .filter((o) => o.status === 'Activa' || o.status === 'Ganando');
+  if (!active.length) return null;
+  return active.reduce((min, o) => (o.amount < min.amount ? o : min));
 });
 
 const remainingUnits = computed(() =>
@@ -178,13 +217,16 @@ async function openPanel(p: Panel) {
 
             <div class="space-y-3 p-4">
               <div
-                v-if="isAssignedToMe"
+                v-if="showConfirmedLock"
                 class="flex items-start gap-3 rounded-xl bg-success-soft p-3 text-sm"
               >
                 <CircleCheck class="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />
                 <div>
-                  <p class="font-semibold text-success">Estás confirmado en este viaje</p>
+                  <p class="font-semibold text-success">
+                    Ya confirmaste tu participación en esta carga
+                  </p>
                   <RouterLink
+                    v-if="load.status !== 'Publicado'"
                     :to="{ name: 'carrier-trip-detail', params: { id: load.id } }"
                     class="mt-1 inline-flex items-center gap-0.5 font-semibold text-navy hover:text-brand"
                   >
@@ -195,12 +237,20 @@ async function openPanel(p: Panel) {
 
               <div
                 v-else-if="currentOffer"
-                class="flex items-start gap-3 rounded-xl bg-blue-soft/70 p-3 text-sm"
+                class="flex items-start gap-3 rounded-xl p-3 text-sm"
+                :class="currentOffer.status === 'Rechazada' ? 'bg-danger-soft' : 'bg-blue-soft/70'"
               >
-                <HandCoins class="mt-0.5 size-5 shrink-0 text-brand" aria-hidden="true" />
+                <HandCoins
+                  class="mt-0.5 size-5 shrink-0"
+                  :class="currentOffer.status === 'Rechazada' ? 'text-danger' : 'text-brand'"
+                  aria-hidden="true"
+                />
                 <div>
                   <p class="font-semibold text-navy">
-                    Tu oferta: {{ statusLabel(currentOffer.status) }}
+                    <template v-if="load.assignmentMode === 'Consolidada LTL'">
+                      {{ currentOffer.status === 'Rechazada' ? 'Cotización rechazada' : 'Cotización enviada' }}
+                    </template>
+                    <template v-else>Tu oferta: {{ statusLabel(currentOffer.status) }}</template>
                   </p>
                   <p class="mt-0.5 text-muted">
                     {{ formatMoney(currentOffer.proposedPrice ?? currentOffer.amount, currentOffer.currency) }}
@@ -218,7 +268,13 @@ async function openPanel(p: Panel) {
                 {{ primaryAction.label }}
               </button>
               <p
-                v-else-if="!canAct && !isAssignedToMe"
+                v-else-if="accountPending && panel === 'none'"
+                class="rounded-xl bg-orange-soft px-3 py-2.5 text-center text-[13px] font-medium text-orange"
+              >
+                Tu cuenta está pendiente de aprobación
+              </p>
+              <p
+                v-else-if="!canAct && !showConfirmedLock && !currentOffer && panel === 'none'"
                 class="text-center text-[13px] text-muted"
               >
                 Esta carga ya no recibe participaciones.
@@ -250,6 +306,28 @@ async function openPanel(p: Panel) {
             @close="panel = 'none'"
             @done="panel = 'none'"
           />
+
+          <section v-if="load.assignmentMode === 'Subasta Inversa'" class="cc-card p-4">
+            <h2 class="text-sm font-semibold text-navy">Estado de la subasta</h2>
+            <dl class="mt-3 space-y-2 text-sm">
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-muted">Mejor tarifa actual</dt>
+                <dd class="font-semibold" :class="bestBid ? 'text-success' : 'text-navy'">
+                  {{ bestBid ? formatMoney(bestBid.amount, load.currency) : 'Sin ofertas aún' }}
+                </dd>
+              </div>
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-muted">Cierre</dt>
+                <dd class="font-medium text-navy">{{ formatDateTime(load.deadline) }}</dd>
+              </div>
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-muted">Decremento mínimo</dt>
+                <dd class="font-medium text-navy">
+                  {{ formatMoney(load.minBidDecrement, load.currency) }}
+                </dd>
+              </div>
+            </dl>
+          </section>
         </aside>
 
         <!-- Details -->

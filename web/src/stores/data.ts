@@ -12,6 +12,7 @@ import {
   listenToOwnUser,
   listenToUnits,
   listenToUsers,
+  saveCartaInstruccion as saveCartaDoc,
   saveLoad,
   saveNotification,
   saveOffer,
@@ -29,7 +30,9 @@ import {
 import {
   loadIsFull,
   newUuid,
+  phoneDigits,
   type AppNotification,
+  type CartaInstruccion,
   type AppUser,
   type EquipmentType,
   type Load,
@@ -474,7 +477,11 @@ export const useDataStore = defineStore('data', {
       if (new Date() >= load.deadline) return 'deadlinePassed';
       if (load.assignmentMode !== 'Tarifa Fija') return 'alreadyAssigned';
       if (loadIsFull(load)) return 'alreadyAssigned';
-      if (load.confirmedCarrierIds.includes(user.uuid)) return 'alreadyAssigned';
+      // Single-unit loads block a second confirmation. Multi-unit loads let the
+      // same carrier add more units until the load is full.
+      if (load.unitCount <= 1 && load.confirmedCarrierIds.includes(user.uuid)) {
+        return 'alreadyAssigned';
+      }
 
       let optUnitIdx: number | undefined;
       if (opts.unitId) {
@@ -490,10 +497,12 @@ export const useDataStore = defineStore('data', {
       }
 
       const availableUnitCount = opts.availableUnitCount ?? 1;
-      this.loads[loadIdx].confirmedCarrierIds = [
-        ...this.loads[loadIdx].confirmedCarrierIds,
-        user.uuid,
-      ];
+      if (!this.loads[loadIdx].confirmedCarrierIds.includes(user.uuid)) {
+        this.loads[loadIdx].confirmedCarrierIds = [
+          ...this.loads[loadIdx].confirmedCarrierIds,
+          user.uuid,
+        ];
+      }
       const remaining =
         this.loads[loadIdx].unitCount - this.loads[loadIdx].confirmedUnitCount;
       this.loads[loadIdx].confirmedUnitCount += Math.min(
@@ -662,6 +671,23 @@ export const useDataStore = defineStore('data', {
       if (offerIdx < 0 || this.offers[offerIdx].status !== 'PendienteAprobacion') return;
       this.offers[offerIdx].status = 'Rechazada';
       await updateOfferFields(offerId, { status: 'Rechazada' });
+    },
+
+    async updateOffer(offerId: string, newAmountPerUnit: number, newUnitCount: number) {
+      const idx = this.offers.findIndex((o) => o.id === offerId);
+      if (idx < 0 || newAmountPerUnit <= 0) return;
+      const editable: OfferStatus[] = ['Activa', 'Ganando', 'Superada', 'PendienteAprobacion'];
+      if (!editable.includes(this.offers[idx].status)) return;
+      const count = Math.max(1, newUnitCount);
+      this.offers[idx].proposedPrice = newAmountPerUnit;
+      this.offers[idx].amount = newAmountPerUnit * count;
+      this.offers[idx].availableUnitCount = count;
+      if (useAuthStore().currentUser?.uuid === 'demo-layout') return;
+      await updateOfferFields(offerId, {
+        amount: this.offers[idx].amount,
+        proposedPrice: newAmountPerUnit,
+        availableUnitCount: count,
+      });
     },
 
     // ── Bids ──────────────────────────────────────────────────────────
@@ -968,8 +994,17 @@ export const useDataStore = defineStore('data', {
         urgentRepost: true,
         offeredPrice: this.loads[idx].offeredPrice,
       };
-      if (allowCounterOffer) fields.assignmentMode = 'Confirmación Manual';
+      if (allowCounterOffer) fields.assignmentMode = 'Subasta Inversa';
+      if (useAuthStore().currentUser?.uuid === 'demo-layout') return;
       await updateLoadFields(loadId, fields);
+    },
+
+    async saveCartaInstruccion(loadId: string, ci: CartaInstruccion) {
+      const idx = this.loads.findIndex((l) => l.id === loadId);
+      if (idx < 0) return;
+      this.loads[idx].cartaInstruccion = ci;
+      if (useAuthStore().currentUser?.uuid === 'demo-layout') return;
+      await saveCartaDoc(loadId, ci);
     },
 
     // ── Units ─────────────────────────────────────────────────────────
@@ -1072,6 +1107,19 @@ export const useDataStore = defineStore('data', {
     },
 
     async lookupOperator(phone: string): Promise<AppUser | null> {
+      const digits = phoneDigits(phone);
+      if (!digits) return null;
+      const local = this.users.find(
+        (u) => phoneDigits(u.phone) === digits && u.role !== 'admin',
+      );
+      if (local) return local;
+      if (useAuthStore().currentUser?.uuid === 'demo-layout') {
+        const demo = await import('@/lib/demo-data');
+        return (
+          demo.demoUsers().find((u) => phoneDigits(u.phone) === digits && u.role !== 'admin') ??
+          null
+        );
+      }
       return fetchUserByPhone(phone);
     },
   },

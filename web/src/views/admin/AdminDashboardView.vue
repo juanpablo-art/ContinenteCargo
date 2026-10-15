@@ -11,6 +11,7 @@ import {
   X,
   Inbox,
   Truck,
+  FileWarning,
 } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
@@ -60,6 +61,16 @@ const pendingCounterOffers = computed(() =>
 
 const availableUnits = computed(
   () => store.units.filter((u) => u.status === 'Disponible').length,
+);
+
+const loadsNeedingCI = computed(() =>
+  store.loads
+    .filter((load) => {
+      if (load.cartaInstruccion) return false;
+      if (loadStatusIsActive(load.status) && load.status !== 'Publicado') return true;
+      return load.status === 'Publicado' && load.confirmedUnitCount > 0;
+    })
+    .sort((a, b) => a.pickupDate.getTime() - b.pickupDate.getTime()),
 );
 
 const attentionCount = computed(
@@ -224,6 +235,37 @@ async function run(id: string, action: () => Promise<unknown>, ok: string) {
                 </button>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section v-if="loadsNeedingCI.length">
+          <div class="mb-3 flex items-center gap-2">
+            <h2 class="cc-h2">Viajes sin carta de instrucción</h2>
+            <span class="cc-badge bg-danger text-white">{{ loadsNeedingCI.length }}</span>
+          </div>
+          <div class="cc-card divide-y divide-line overflow-hidden">
+            <RouterLink
+              v-for="load in loadsNeedingCI"
+              :key="load.id"
+              :to="`/admin/loads/${load.id}`"
+              class="flex items-center gap-3 px-4 py-3.5 transition hover:bg-background/70"
+            >
+              <span class="cc-icon-tile size-9 bg-danger-soft text-danger">
+                <FileWarning class="size-4" aria-hidden="true" />
+              </span>
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-semibold text-navy">
+                  {{ load.originCity }} → {{ load.destinationCity }}
+                </p>
+                <p class="mt-0.5 truncate text-xs text-muted">
+                  {{ load.reference }} · {{ load.confirmedUnitCount }}/{{ load.unitCount }} unidades
+                  <template v-if="load.status === 'Publicado' && load.confirmedUnitCount > 0 && load.confirmedUnitCount < load.unitCount">
+                    · {{ load.unitCount - load.confirmedUnitCount }} restantes
+                  </template>
+                </p>
+              </div>
+              <StatusBadge :load="load" />
+            </RouterLink>
           </div>
         </section>
 

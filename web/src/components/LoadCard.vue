@@ -37,6 +37,13 @@ const unitsLabel = computed(() => {
   return '1 unidad';
 });
 
+const displayCount = computed(() => {
+  const load = props.load;
+  if (load.unitCount <= 1) return 1;
+  if (isPartial.value) return load.unitCount - load.confirmedUnitCount;
+  return load.unitCount;
+});
+
 const fillPct = computed(() =>
   Math.min(100, Math.round((props.load.confirmedUnitCount / props.load.unitCount) * 100)),
 );
@@ -130,6 +137,13 @@ const modeClass = computed(() => {
         <p class="cc-money whitespace-nowrap text-[17px] leading-tight">
           {{ formatMoney(load.offeredPrice, load.currency) }}
           <span v-if="load.unitCount > 1" class="whitespace-nowrap text-xs font-medium text-muted">/ ud</span>
+        </p>
+        <p
+          v-if="load.unitCount > 1"
+          class="mt-0.5 text-[11px] font-medium text-muted"
+        >
+          {{ formatMoney(load.offeredPrice * displayCount, load.currency) }} total
+          ({{ displayCount }} {{ isPartial ? 'disponibles' : 'unidades' }})
         </p>
         <p class="mt-0.5 text-[11px] font-medium" :class="load.includesVAT ? 'text-success' : 'text-muted'">
           {{ load.includesVAT ? 'IVA incluido' : 'Más IVA' }}

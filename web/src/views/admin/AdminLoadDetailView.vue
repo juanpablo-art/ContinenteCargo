@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   Container,
@@ -16,6 +16,7 @@ import {
   HandCoins,
   Check,
   X,
+  FileText,
 } from '@lucide/vue';
 import { useDataStore } from '@/stores/data';
 import { LOAD_STATUSES, loadIsOpen, type LoadStatus } from '@/lib/models';
@@ -32,6 +33,7 @@ import StatusBadge from '@/components/StatusBadge.vue';
 import RouteTimeline from '@/components/RouteTimeline.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import ConfirmModal from '@/components/ConfirmModal.vue';
+import CartaInstruccionSheet from '@/views/admin/CartaInstruccionSheet.vue';
 
 const route = useRoute();
 const store = useDataStore();
@@ -50,6 +52,8 @@ const allowCounter = ref(false);
 const busy = ref(false);
 const nextStatus = ref<LoadStatus | ''>('');
 const confirmCancel = ref(false);
+const showCI = ref(false);
+const auctionAutoClosed = ref(false);
 
 const nextStatuses = computed(() =>
   LOAD_STATUSES.filter((s) => s !== 'Publicado' && s !== load.value?.status && s !== 'Cancelado'),
@@ -97,6 +101,22 @@ function closeAuction() {
   if (!load.value) return;
   void run(() => store.closeAuction(load.value!.id), 'Subasta cerrada');
 }
+
+watch(
+  load,
+  (current) => {
+    if (auctionAutoClosed.value || !current) return;
+    if (
+      current.assignmentMode === 'Subasta Inversa' &&
+      current.status === 'Publicado' &&
+      new Date() > current.deadline
+    ) {
+      auctionAutoClosed.value = true;
+      void store.closeAuction(current.id);
+    }
+  },
+  { immediate: true },
+);
 
 function sendUrgency() {
   if (!load.value) return;
@@ -211,6 +231,32 @@ function sendUrgency() {
                 {{ req }}
               </span>
             </div>
+          </section>
+
+          <section class="cc-card p-5">
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="cc-h2 flex items-center gap-2">
+                <FileText class="size-4 text-brand" aria-hidden="true" />
+                Carta de instrucción
+              </h2>
+              <span v-if="load.cartaInstruccion" class="cc-badge bg-success-soft text-success">Generada</span>
+            </div>
+            <p v-if="load.confirmedUnitCount" class="mt-2 text-xs text-muted">
+              {{ load.confirmedUnitCount }}/{{ load.unitCount }} unidades confirmadas
+            </p>
+            <p v-if="load.cartaInstruccion" class="mt-2 text-sm text-ink">
+              <template v-if="load.cartaInstruccion.folio">Folio {{ load.cartaInstruccion.folio }} · </template>
+              Generada {{ formatDateTime(load.cartaInstruccion.creadaAt) }}
+              <template v-if="load.cartaInstruccion.archivoNombre">
+                · {{ load.cartaInstruccion.archivoNombre }}
+              </template>
+            </p>
+            <p v-else class="mt-2 text-sm text-muted">
+              Aún no se ha generado la carta de instrucción para esta carga.
+            </p>
+            <button type="button" class="cc-btn-secondary mt-3 h-10" @click="showCI = true">
+              {{ load.cartaInstruccion ? 'Ver / editar carta' : 'Generar carta de instrucción' }}
+            </button>
           </section>
 
           <section class="cc-card overflow-hidden">
@@ -409,6 +455,12 @@ function sendUrgency() {
                 <input v-model="allowCounter" type="checkbox" class="size-4" />
                 Permitir contra-ofertas
               </label>
+              <p
+                v-if="allowCounter && load.assignmentMode === 'Tarifa Fija'"
+                class="mt-2 text-xs text-muted"
+              >
+                La modalidad cambiará de Tarifa Fija a Subasta Inversa.
+              </p>
               <button type="button" class="cc-btn mt-3 h-10 bg-orange shadow-none hover:bg-orange/90" :disabled="busy" @click="sendUrgency">
                 <HandCoins class="size-4" aria-hidden="true" /> Enviar alerta
               </button>
@@ -426,6 +478,8 @@ function sendUrgency() {
         </aside>
       </div>
     </template>
+
+    <CartaInstruccionSheet v-if="load" :open="showCI" :load="load" @close="showCI = false" />
 
     <ConfirmModal
       :open="confirmCancel"

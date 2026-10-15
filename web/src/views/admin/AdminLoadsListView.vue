@@ -16,7 +16,10 @@ const search = ref('');
 
 function matches(l: Load, f: Filter) {
   if (f === 'open') return l.status === 'Publicado';
-  if (f === 'active') return !['Publicado', 'Entregado', 'Cancelado'].includes(l.status);
+  if (f === 'active') {
+    if (l.status === 'Publicado' && l.confirmedUnitCount > 0) return true;
+    return !['Publicado', 'Entregado', 'Cancelado'].includes(l.status);
+  }
   if (f === 'done') return l.status === 'Entregado' || l.status === 'Cancelado';
   return true;
 }

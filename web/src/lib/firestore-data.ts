@@ -427,6 +427,15 @@ export async function updateLoadFields(
   await updateDoc(doc(db, 'loads', loadId), fields);
 }
 
+export async function saveCartaInstruccion(
+  loadId: string,
+  ci: CartaInstruccion,
+): Promise<void> {
+  await updateLoadFields(loadId, {
+    cartaInstruccion: { ...ci, creadaAt: ts(ci.creadaAt) },
+  });
+}
+
 /** Carrier/admin status bump — updateData only. */
 export async function updateLoadStatusFields(
   loadId: string,

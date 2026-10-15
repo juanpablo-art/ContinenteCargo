@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import type { AppUser } from '@/lib/models';
 import { Truck, TriangleAlert } from '@lucide/vue';
 import { useDataStore, type TakeLoadResult } from '@/stores/data';
 import { unitIsAvailableFor, type Load } from '@/lib/models';
@@ -15,6 +16,8 @@ const selectedUnitId = ref<string>('');
 const availableUnitCount = ref(1);
 const proposedPriceText = ref('');
 const operatorPhone = ref('');
+const foundOperator = ref<AppUser | null>(null);
+const operatorLookup = ref<'idle' | 'pending' | 'found' | 'missing'>('idle');
 const unitETA = ref(toDatetimeLocalValue(props.load.pickupDate));
 const trackingUrl = ref('');
 const result = ref<TakeLoadResult | null>(null);
@@ -70,6 +73,23 @@ watch(
   { immediate: true },
 );
 
+let lookupTimer: ReturnType<typeof setTimeout> | undefined;
+watch(operatorPhone, (phone) => {
+  clearTimeout(lookupTimer);
+  foundOperator.value = null;
+  if (!phone.replace(/\D/g, '')) {
+    operatorLookup.value = 'idle';
+    return;
+  }
+  operatorLookup.value = 'pending';
+  lookupTimer = setTimeout(async () => {
+    const found = await store.lookupOperator(phone);
+    if (operatorPhone.value !== phone) return;
+    foundOperator.value = found;
+    operatorLookup.value = found ? 'found' : 'missing';
+  }, 350);
+});
+
 async function confirm() {
   if (!canConfirm.value) return;
   isConfirming.value = true;
@@ -80,6 +100,7 @@ async function confirm() {
       result.value = await store.submitCounterOffer({
         loadId: props.load.id,
         unitId: selectedUnitId.value || undefined,
+        operatorId: foundOperator.value?.uuid,
         unitETA: fromDatetimeLocalValue(unitETA.value),
         trackingUrl: trackingUrl.value.trim(),
         availableUnitCount: availableUnitCount.value,
@@ -89,6 +110,7 @@ async function confirm() {
       result.value = await store.takeLoad({
         loadId: props.load.id,
         unitId: selectedUnitId.value || undefined,
+        operatorId: foundOperator.value?.uuid,
         unitETA: fromDatetimeLocalValue(unitETA.value),
         trackingUrl: trackingUrl.value.trim(),
         availableUnitCount: availableUnitCount.value,
@@ -240,6 +262,16 @@ function resultBody(r: TakeLoadResult) {
           class="cc-field"
           placeholder="10 dígitos"
         />
+        <p
+          v-if="foundOperator"
+          class="mt-2 rounded-xl bg-success-soft px-3 py-2 text-xs font-medium text-success"
+        >
+          {{ foundOperator.name }}
+          · {{ foundOperator.role === 'independent_operator' ? 'Operador independiente' : 'Transportista' }}
+        </p>
+        <p v-else-if="operatorLookup === 'missing'" class="cc-hint">
+          Número no encontrado. El viaje se registrará sin operador asignado.
+        </p>
       </div>
 
       <button
