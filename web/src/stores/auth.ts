@@ -72,6 +72,32 @@ export const useAuthStore = defineStore('auth', {
     async restoreSession() {
       this.isCheckingAuth = true;
       try {
+        // DEV-only layout demos (Playwright screenshots) — never used in production.
+        if (import.meta.env.DEV) {
+          const demoRole = sessionStorage.getItem('ccDemoRole') as UserRole | null;
+          if (
+            demoRole === 'admin' ||
+            demoRole === 'carrier' ||
+            demoRole === 'independent_operator'
+          ) {
+            this.currentUser = {
+              uuid: 'demo-layout',
+              name: demoRole === 'admin' ? 'Admin Demo' : 'Carrier Demo',
+              email: 'demo@continente.local',
+              phone: '0000000000',
+              role: demoRole,
+              status: 'approved',
+              canNegotiateRates: true,
+              handlesLTL: false,
+              routes: [],
+              coverageStates: [],
+              coverageZones: [],
+              coverageEquipmentTypes: [],
+            };
+            return;
+          }
+        }
+
         await auth.authStateReady();
         const firebaseUser = auth.currentUser;
         if (!firebaseUser) {

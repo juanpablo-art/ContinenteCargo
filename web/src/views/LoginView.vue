@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Mail, Lock } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
+import { homePathForRole } from '@/lib/role-home';
 
 const email = ref('');
 const password = ref('');
@@ -12,7 +13,7 @@ const router = useRouter();
 async function onSubmit() {
   auth.clearError();
   const ok = await auth.login(email.value.trim(), password.value);
-  if (ok) await router.push({ name: 'home' });
+  if (ok) await router.push(homePathForRole(auth.currentUser?.role));
 }
 </script>
 

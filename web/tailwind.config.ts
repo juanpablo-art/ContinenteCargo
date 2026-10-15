@@ -30,6 +30,7 @@ export default {
           soft: 'rgb(var(--navy-soft) / <alpha-value>)',
           deep: 'rgb(var(--navy-deep) / <alpha-value>)',
         },
+        brand: 'rgb(var(--brand) / <alpha-value>)',
         blue: {
           DEFAULT: 'rgb(var(--blue) / <alpha-value>)',
           soft: 'rgb(var(--blue-soft) / <alpha-value>)',

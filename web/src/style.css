@@ -6,18 +6,18 @@
   :root {
     color-scheme: light;
 
-    --background: 245 247 251;
+    --background: 248 249 253;
     --foreground: 16 36 58;
 
     --card: 255 255 255;
     --card-foreground: 16 36 58;
 
-    --primary: 2 47 86;
+    --primary: 0 87 184;
     --primary-foreground: 255 255 255;
 
     --border: 228 234 242;
     --input: 221 229 239;
-    --ring: 31 132 248;
+    --ring: 0 87 184;
 
     --radius: 0.625rem;
 
@@ -29,9 +29,11 @@
     --navy-soft: 10 63 107;
     --navy-deep: 1 30 57;
 
-    --blue: 31 132 248;
+    /* Brand primary #0057B8 */
+    --brand: 0 87 184;
+    --blue: 0 87 184;
     --blue-soft: 234 243 254;
-    --blue-ink: 15 95 191;
+    --blue-ink: 0 70 148;
 
     --orange: 232 111 20;
     --orange-soft: 253 241 231;
