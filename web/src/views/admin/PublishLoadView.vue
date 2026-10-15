@@ -1,6 +1,19 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import {
+  ArrowDown,
+  BadgeDollarSign,
+  Gavel,
+  Hand,
+  Boxes,
+  Smartphone,
+  Mail,
+  MessageCircle,
+  PhoneCall,
+  Lock,
+  Plus,
+} from '@lucide/vue';
+import type { Component } from 'vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
 import {
@@ -17,12 +30,14 @@ import {
   type SpecialRequirement,
 } from '@/lib/models';
 import { toDatetimeLocalValue, fromDatetimeLocalValue, formatMoney } from '@/lib/format';
+import PageHeader from '@/components/PageHeader.vue';
+import ResultState from '@/components/ResultState.vue';
 
 const auth = useAuthStore();
 const store = useDataStore();
-const router = useRouter();
 
 const published = ref(false);
+const publishedId = ref('');
 const publishedSummary = ref({ reference: '', route: '', price: '', equipment: '' });
 
 const reference = ref('');
@@ -79,6 +94,27 @@ const isValid = computed(() => {
   if (!originCity.value.trim() || !destinationCity.value.trim()) return false;
   if (isLTL.value) return Boolean(weightText.value && measurementsDesc.value);
   return Boolean(priceText.value);
+});
+
+const modeMeta: Record<AssignmentMode, { icon: Component; hint: string }> = {
+  'Tarifa Fija': { icon: BadgeDollarSign, hint: 'El primero en confirmar se queda la carga' },
+  'Subasta Inversa': { icon: Gavel, hint: 'Gana la oferta más baja al cierre' },
+  'Confirmación Manual': { icon: Hand, hint: 'Tú eliges entre los disponibles' },
+  'Consolidada LTL': { icon: Boxes, hint: 'Consolidadoras envían cotización' },
+};
+
+const channels = computed(() => [
+  { model: notifyInApp, label: 'En app', icon: Smartphone },
+  { model: notifyEmail, label: 'Correo', icon: Mail },
+  { model: notifyWhatsApp, label: 'WhatsApp', icon: MessageCircle },
+  { model: notifyAICall, label: 'Llamada IA', icon: PhoneCall },
+]);
+
+const summary = computed(() => {
+  const o = originCity.value.trim() || 'Origen';
+  const d = destinationCity.value.trim() || 'Destino';
+  const price = !isLTL.value && priceText.value ? formatMoney(Number(priceText.value), currency.value) : null;
+  return { route: `${o} → ${d}`, price };
 });
 
 function toggleReq(req: SpecialRequirement) {
@@ -143,6 +179,7 @@ async function publish() {
     };
 
     await store.publishLoad(load);
+    publishedId.value = load.id;
     publishedSummary.value = {
       reference: load.reference,
       route: `${load.originCity}, ${load.originState} → ${load.destinationCity}, ${load.destinationState}`,
@@ -150,6 +187,7 @@ async function publish() {
       equipment: load.equipmentType,
     };
     published.value = true;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'No se pudo publicar la carga';
   } finally {
@@ -161,205 +199,175 @@ async function publish() {
 <template>
   <div class="cc-page-narrow">
     <template v-if="published">
-      <div class="cc-card p-8 text-center">
-        <p class="text-sm font-medium text-success">Carga publicada</p>
-        <h1 class="mt-2 text-xl font-bold text-navy">{{ publishedSummary.reference }}</h1>
-        <p class="mt-2 text-sm text-muted">{{ publishedSummary.route }}</p>
-        <p class="mt-1 text-sm text-muted">
+      <div class="cc-card mx-auto mt-6 max-w-md p-6">
+        <ResultState
+          ok
+          title="¡Carga publicada!"
+          :body="`${publishedSummary.reference} · ${publishedSummary.route}`"
+          action-label="Ver detalle de la carga"
+          @action="$router.push({ name: 'admin-load-detail', params: { id: publishedId } })"
+        />
+        <p class="-mt-1 text-center text-sm text-muted">
           {{ publishedSummary.equipment }} · {{ publishedSummary.price }}
         </p>
-        <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-          <RouterLink
-            :to="{ name: 'admin-loads' }"
-            class="cc-btn h-11 w-auto px-6 text-sm sm:w-auto"
-          >
-            Ver cargas
-          </RouterLink>
-          <button
-            type="button"
-            class="cc-btn-secondary h-11 text-sm sm:w-auto sm:px-6"
-            @click="published = false"
-          >
-            Publicar otra
-          </button>
-        </div>
+        <p class="mt-1 text-center text-[13px] text-muted">
+          Los transportistas con cobertura ya recibieron el aviso.
+        </p>
+        <button type="button" class="cc-btn-ghost mx-auto mt-3 flex" @click="published = false">
+          <Plus class="size-4" aria-hidden="true" /> Publicar otra carga
+        </button>
       </div>
     </template>
 
     <template v-else>
-      <h1 class="cc-h1 mb-5">Publicar carga</h1>
-      <p v-if="error" class="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-sm text-danger">
+      <PageHeader
+        title="Publicar carga"
+        subtitle="Se notificará al instante a los transportistas con cobertura"
+        :back="{ name: 'admin-loads' }"
+        back-label="Cargas"
+      />
+
+      <p v-if="error" class="mb-4 rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">
         {{ error }}
       </p>
 
-      <form class="space-y-5" @submit.prevent="publish">
-        <!-- Route -->
-        <section class="cc-card p-4 md:p-5 space-y-3">
-          <h2 class="text-sm font-semibold text-navy">Ruta</h2>
-          <div>
-            <label class="cc-label">Referencia (opcional)</label>
-            <input v-model="reference" class="cc-field" placeholder="CC-2026-001" />
+      <form id="publish-form" class="space-y-4 pb-24" @submit.prevent="publish">
+        <!-- 1. Modality -->
+        <section class="cc-card p-5">
+          <h2 class="cc-h2 mb-1 flex items-center gap-2.5">
+            <span class="flex size-6 items-center justify-center rounded-full bg-navy text-[11px] font-bold text-white">1</span>
+            Modalidad de asignación
+          </h2>
+          <div class="mt-4 grid gap-2 sm:grid-cols-2">
+            <label
+              v-for="m in ASSIGNMENT_MODES"
+              :key="m"
+              class="flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition"
+              :class="
+                assignmentMode === m
+                  ? 'border-brand bg-blue-soft/60 ring-1 ring-brand'
+                  : 'border-line hover:border-blue/30'
+              "
+            >
+              <input v-model="assignmentMode" type="radio" :value="m" class="sr-only" />
+              <span
+                class="cc-icon-tile size-9"
+                :class="assignmentMode === m ? 'bg-brand text-white' : ''"
+              >
+                <component :is="modeMeta[m].icon" class="size-[18px]" aria-hidden="true" />
+              </span>
+              <span class="min-w-0">
+                <span class="block text-sm font-semibold text-navy">{{ m }}</span>
+                <span class="mt-0.5 block text-xs leading-snug text-muted">{{ modeMeta[m].hint }}</span>
+              </span>
+            </label>
           </div>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label class="cc-label">Ciudad origen *</label>
-              <input v-model="originCity" class="cc-field" required />
-            </div>
-            <div>
-              <label class="cc-label">País origen</label>
-              <select v-model="originCountry" class="cc-field">
+        </section>
+
+        <!-- 2. Route -->
+        <section class="cc-card p-5">
+          <h2 class="cc-h2 mb-4 flex items-center gap-2.5">
+            <span class="flex size-6 items-center justify-center rounded-full bg-navy text-[11px] font-bold text-white">2</span>
+            Ruta y fechas
+          </h2>
+
+          <div class="rounded-2xl border border-line p-4">
+            <p class="cc-label flex items-center gap-2">
+              <span class="size-2.5 rounded-full border-2 border-brand" /> Origen
+            </p>
+            <div class="grid gap-3 sm:grid-cols-[1fr_120px_1fr]">
+              <input v-model="originCity" class="cc-field" placeholder="Ciudad *" required aria-label="Ciudad origen" />
+              <select v-model="originCountry" class="cc-field" aria-label="País origen">
                 <option value="mx">México</option>
                 <option value="us">EE.UU.</option>
               </select>
+              <select v-if="originCountry === 'mx'" v-model="originMXState" class="cc-field" aria-label="Estado origen">
+                <option v-for="s in MEXICAN_STATES" :key="s" :value="s">{{ s }}</option>
+              </select>
+              <select v-else v-model="originUSState" class="cc-field" aria-label="Estado origen">
+                <option v-for="s in US_STATES" :key="s" :value="s">{{ s }}</option>
+              </select>
             </div>
-          </div>
-          <div>
-            <label class="cc-label">Estado origen</label>
-            <select
-              v-if="originCountry === 'mx'"
-              v-model="originMXState"
-              class="cc-field"
-            >
-              <option v-for="s in MEXICAN_STATES" :key="s" :value="s">{{ s }}</option>
-            </select>
-            <select v-else v-model="originUSState" class="cc-field">
-              <option v-for="s in US_STATES" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </div>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label class="cc-label">Ciudad destino *</label>
-              <input v-model="destinationCity" class="cc-field" required />
+            <div class="flex justify-center py-2 text-muted" aria-hidden="true">
+              <ArrowDown class="size-4" />
             </div>
-            <div>
-              <label class="cc-label">País destino</label>
-              <select v-model="destinationCountry" class="cc-field">
+            <p class="cc-label flex items-center gap-2">
+              <span class="size-2.5 rounded-full bg-orange" /> Destino
+            </p>
+            <div class="grid gap-3 sm:grid-cols-[1fr_120px_1fr]">
+              <input v-model="destinationCity" class="cc-field" placeholder="Ciudad *" required aria-label="Ciudad destino" />
+              <select v-model="destinationCountry" class="cc-field" aria-label="País destino">
                 <option value="mx">México</option>
                 <option value="us">EE.UU.</option>
               </select>
-            </div>
-          </div>
-          <div>
-            <label class="cc-label">Estado destino</label>
-            <select
-              v-if="destinationCountry === 'mx'"
-              v-model="destinationMXState"
-              class="cc-field"
-            >
-              <option v-for="s in MEXICAN_STATES" :key="s" :value="s">{{ s }}</option>
-            </select>
-            <select v-else v-model="destinationUSState" class="cc-field">
-              <option v-for="s in US_STATES" :key="s" :value="s">{{ s }}</option>
-            </select>
-          </div>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label class="cc-label">Recolección</label>
-              <input v-model="pickupDate" type="datetime-local" class="cc-field" />
-            </div>
-            <div>
-              <label class="cc-label">Entrega</label>
-              <input v-model="deliveryDate" type="datetime-local" class="cc-field" />
-            </div>
-          </div>
-        </section>
-
-        <!-- Modality -->
-        <section class="cc-card p-4 md:p-5 space-y-3">
-          <h2 class="text-sm font-semibold text-navy">Modalidad</h2>
-          <div>
-            <label class="cc-label">Asignación</label>
-            <select v-model="assignmentMode" class="cc-field">
-              <option v-for="m in ASSIGNMENT_MODES" :key="m" :value="m">{{ m }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="cc-label">Equipo</label>
-            <select v-model="equipmentType" class="cc-field">
-              <option v-for="e in EQUIPMENT_TYPES" :key="e" :value="e">{{ e }}</option>
-            </select>
-          </div>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label class="cc-label">Unidades</label>
-              <input v-model.number="unitCount" type="number" min="1" class="cc-field" />
-            </div>
-            <div>
-              <label class="cc-label">Límite para participar</label>
-              <input v-model="deadline" type="datetime-local" class="cc-field" />
-            </div>
-          </div>
-        </section>
-
-        <!-- Price -->
-        <section
-          v-if="!isLTL"
-          class="cc-card p-4 md:p-5 space-y-3"
-        >
-          <h2 class="text-sm font-semibold text-navy">Precio</h2>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <div>
-              <label class="cc-label">Precio por unidad *</label>
-              <input v-model="priceText" type="number" min="0" class="cc-field" />
-            </div>
-            <div>
-              <label class="cc-label">Moneda</label>
-              <select v-model="currency" class="cc-field">
-                <option value="MXN">MXN</option>
-                <option value="USD">USD</option>
+              <select v-if="destinationCountry === 'mx'" v-model="destinationMXState" class="cc-field" aria-label="Estado destino">
+                <option v-for="s in MEXICAN_STATES" :key="s" :value="s">{{ s }}</option>
+              </select>
+              <select v-else v-model="destinationUSState" class="cc-field" aria-label="Estado destino">
+                <option v-for="s in US_STATES" :key="s" :value="s">{{ s }}</option>
               </select>
             </div>
           </div>
-          <div>
-            <label class="cc-label">Máx. autorizado sin IVA (opcional)</label>
-            <input v-model="maxPriceText" type="number" min="0" class="cc-field" />
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-3">
+            <div>
+              <label class="cc-label" for="p-pick">Recolección</label>
+              <input id="p-pick" v-model="pickupDate" type="datetime-local" class="cc-field" />
+            </div>
+            <div>
+              <label class="cc-label" for="p-del">Entrega</label>
+              <input id="p-del" v-model="deliveryDate" type="datetime-local" class="cc-field" />
+            </div>
+            <div>
+              <label class="cc-label" for="p-dead">Cierre de participación</label>
+              <input id="p-dead" v-model="deadline" type="datetime-local" class="cc-field" />
+            </div>
           </div>
-          <label class="flex items-center gap-2 text-sm text-muted">
-            <input v-model="includesVAT" type="checkbox" class="size-4" />
-            IVA incluido
-          </label>
-          <div v-if="assignmentMode === 'Subasta Inversa'">
-            <label class="cc-label">Decremento mínimo</label>
-            <input v-model="minDecrementText" type="number" min="0" class="cc-field" />
-          </div>
-          <div>
-            <label class="cc-label">Conceptos incluidos</label>
-            <input v-model="includedConcepts" class="cc-field" />
-          </div>
-          <div>
-            <label class="cc-label">Gastos extras permitidos</label>
-            <input v-model="allowedExtras" class="cc-field" />
+          <div class="mt-4">
+            <label class="cc-label" for="p-ref">Referencia (opcional)</label>
+            <input id="p-ref" v-model="reference" class="cc-field" placeholder="Se genera automáticamente" />
           </div>
         </section>
 
-        <!-- Cargo -->
-        <section class="cc-card p-4 md:p-5 space-y-3">
-          <h2 class="text-sm font-semibold text-navy">Mercancía</h2>
-          <div>
-            <label class="cc-label">Peso (kg) {{ isLTL ? '*' : '' }}</label>
-            <input v-model="weightText" type="number" min="0" class="cc-field" />
+        <!-- 3. Cargo -->
+        <section class="cc-card p-5">
+          <h2 class="cc-h2 mb-4 flex items-center gap-2.5">
+            <span class="flex size-6 items-center justify-center rounded-full bg-navy text-[11px] font-bold text-white">3</span>
+            Equipo y mercancía
+          </h2>
+          <div class="grid gap-4 sm:grid-cols-[1fr_140px]">
+            <div>
+              <label class="cc-label" for="p-eq">Tipo de equipo</label>
+              <select id="p-eq" v-model="equipmentType" class="cc-field">
+                <option v-for="e in EQUIPMENT_TYPES" :key="e" :value="e">{{ e }}</option>
+              </select>
+            </div>
+            <div>
+              <label class="cc-label" for="p-units">Unidades</label>
+              <input id="p-units" v-model.number="unitCount" type="number" min="1" class="cc-field" />
+            </div>
+            <div>
+              <label class="cc-label" for="p-w">Peso (kg) {{ isLTL ? '*' : '' }}</label>
+              <input id="p-w" v-model="weightText" type="number" min="0" inputmode="numeric" class="cc-field" placeholder="22,000" />
+            </div>
+            <div :class="!isLTL && 'sm:col-span-1'">
+              <label class="cc-label" for="p-m">Medidas {{ isLTL ? '*' : '' }}</label>
+              <input id="p-m" v-model="measurementsDesc" class="cc-field" placeholder="26 tarimas" />
+            </div>
           </div>
-          <div>
-            <label class="cc-label">Descripción</label>
-            <textarea v-model="merchandiseDesc" class="cc-field min-h-[80px]" />
+          <div class="mt-4">
+            <label class="cc-label" for="p-desc">Descripción de la mercancía</label>
+            <textarea id="p-desc" v-model="merchandiseDesc" class="cc-field" placeholder="Ej. Electrodomésticos paletizados" />
           </div>
-          <div v-if="isLTL">
-            <label class="cc-label">Medidas *</label>
-            <input v-model="measurementsDesc" class="cc-field" />
-          </div>
-          <div>
+          <div class="mt-4">
             <p class="cc-label">Requisitos especiales</p>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-wrap gap-1.5">
               <button
                 v-for="req in SPECIAL_REQUIREMENTS"
                 :key="req"
                 type="button"
-                class="rounded-full px-3 py-1 text-xs font-medium transition"
-                :class="
-                  selectedRequirements.includes(req)
-                    ? 'bg-brand text-white'
-                    : 'border border-line bg-background text-muted'
-                "
+                class="cc-chip h-8 text-[12.5px]"
+                :class="selectedRequirements.includes(req) && 'cc-chip-active'"
                 @click="toggleReq(req)"
               >
                 {{ req }}
@@ -368,60 +376,131 @@ async function publish() {
           </div>
         </section>
 
-        <!-- Client (non-LTL) -->
-        <section
-          v-if="!isLTL"
-          class="cc-card p-4 md:p-5 space-y-3"
-        >
-          <h2 class="text-sm font-semibold text-navy">Cliente (privado)</h2>
-          <p class="text-xs text-muted">
-            Solo visible para admin y transportista asignado.
-          </p>
-          <div class="grid gap-3 sm:grid-cols-2">
+        <!-- 4. Price -->
+        <section v-if="!isLTL" class="cc-card p-5">
+          <h2 class="cc-h2 mb-4 flex items-center gap-2.5">
+            <span class="flex size-6 items-center justify-center rounded-full bg-navy text-[11px] font-bold text-white">4</span>
+            Precio y condiciones
+          </h2>
+          <div class="grid gap-4 sm:grid-cols-[1fr_120px]">
             <div>
-              <label class="cc-label">Contacto</label>
-              <input v-model="clientContact" class="cc-field" />
+              <label class="cc-label" for="p-price">
+                {{ assignmentMode === 'Subasta Inversa' ? 'Precio de referencia' : 'Precio por unidad' }} *
+              </label>
+              <div class="relative">
+                <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-medium text-muted">$</span>
+                <input
+                  id="p-price"
+                  v-model="priceText"
+                  type="number"
+                  min="0"
+                  inputmode="numeric"
+                  class="cc-field pl-8 text-lg font-semibold tabular-nums"
+                  placeholder="0"
+                />
+              </div>
             </div>
             <div>
-              <label class="cc-label">Teléfono</label>
-              <input v-model="clientPhone" class="cc-field" />
+              <label class="cc-label" for="p-cur">Moneda</label>
+              <select id="p-cur" v-model="currency" class="cc-field">
+                <option value="MXN">MXN</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+            <div>
+              <label class="cc-label flex items-center gap-1.5" for="p-max">
+                <Lock class="size-3.5 text-muted" aria-hidden="true" /> Máx. autorizado sin IVA
+              </label>
+              <div class="relative">
+                <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-medium text-muted">$</span>
+                <input id="p-max" v-model="maxPriceText" type="number" min="0" inputmode="numeric" class="cc-field pl-8 tabular-nums" placeholder="Opcional" />
+              </div>
+              <p class="cc-hint">Nunca se muestra al transportista.</p>
+            </div>
+            <div v-if="assignmentMode === 'Subasta Inversa'">
+              <label class="cc-label" for="p-dec">Decremento mín.</label>
+              <input id="p-dec" v-model="minDecrementText" type="number" min="0" class="cc-field" />
             </div>
           </div>
-          <div>
-            <label class="cc-label">Dirección recolección</label>
-            <input v-model="pickupAddress" class="cc-field" />
+          <label class="cc-check mt-4">
+            <input v-model="includesVAT" type="checkbox" />
+            El precio incluye IVA
+          </label>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="cc-label" for="p-inc">Conceptos incluidos</label>
+              <input id="p-inc" v-model="includedConcepts" class="cc-field" placeholder="Flete, maniobras…" />
+            </div>
+            <div>
+              <label class="cc-label" for="p-ext">Gastos extra permitidos</label>
+              <input id="p-ext" v-model="allowedExtras" class="cc-field" placeholder="Casetas, estadías…" />
+            </div>
           </div>
-          <div>
-            <label class="cc-label">Dirección entrega</label>
-            <input v-model="deliveryAddress" class="cc-field" />
-          </div>
-          <div>
-            <label class="cc-label">Observaciones</label>
-            <textarea v-model="observations" class="cc-field min-h-[72px]" />
+        </section>
+
+        <!-- 5. Client -->
+        <section v-if="!isLTL" class="cc-card p-5">
+          <h2 class="cc-h2 flex items-center gap-2.5">
+            <span class="flex size-6 items-center justify-center rounded-full bg-navy text-[11px] font-bold text-white">5</span>
+            Cliente
+            <span class="cc-badge bg-navy/[0.06] text-navy"><Lock class="size-3" aria-hidden="true" /> Privado</span>
+          </h2>
+          <p class="mb-4 mt-1 text-[13px] text-muted">Solo lo ven administradores y el transportista asignado.</p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="cc-label" for="p-cc">Contacto</label>
+              <input id="p-cc" v-model="clientContact" class="cc-field" placeholder="Nombre" />
+            </div>
+            <div>
+              <label class="cc-label" for="p-cp">Teléfono</label>
+              <input id="p-cp" v-model="clientPhone" type="tel" class="cc-field" placeholder="10 dígitos" />
+            </div>
+            <div>
+              <label class="cc-label" for="p-pa">Dirección de recolección</label>
+              <input id="p-pa" v-model="pickupAddress" class="cc-field" />
+            </div>
+            <div>
+              <label class="cc-label" for="p-da">Dirección de entrega</label>
+              <input id="p-da" v-model="deliveryAddress" class="cc-field" />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="cc-label" for="p-obs">Observaciones</label>
+              <textarea id="p-obs" v-model="observations" class="cc-field" />
+            </div>
           </div>
         </section>
 
         <!-- Alerts -->
-        <section class="cc-card p-4 md:p-5 space-y-2">
-          <h2 class="text-sm font-semibold text-navy">Canales de aviso</h2>
-          <label class="flex items-center gap-2 text-sm"
-            ><input v-model="notifyInApp" type="checkbox" class="size-4" /> En app</label
-          >
-          <label class="flex items-center gap-2 text-sm"
-            ><input v-model="notifyEmail" type="checkbox" class="size-4" /> Correo</label
-          >
-          <label class="flex items-center gap-2 text-sm"
-            ><input v-model="notifyWhatsApp" type="checkbox" class="size-4" /> WhatsApp</label
-          >
-          <label class="flex items-center gap-2 text-sm"
-            ><input v-model="notifyAICall" type="checkbox" class="size-4" /> Llamada IA</label
-          >
+        <section class="cc-card p-5">
+          <h2 class="cc-h2 mb-4">Canales de aviso</h2>
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <label v-for="c in channels" :key="c.label" class="cc-check flex-col items-start gap-2">
+              <span class="flex w-full items-center justify-between">
+                <component :is="c.icon" class="size-4 text-muted" aria-hidden="true" />
+                <input v-model="c.model.value" type="checkbox" />
+              </span>
+              <span class="font-medium">{{ c.label }}</span>
+            </label>
+          </div>
         </section>
-
-        <button type="submit" class="cc-btn" :disabled="!isValid || saving">
-          {{ saving ? 'Publicando…' : 'Publicar carga' }}
-        </button>
       </form>
+
+      <div
+        class="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 border-t border-line bg-card/95 backdrop-blur-xl md:bottom-0 md:left-[248px]"
+      >
+        <div class="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3 sm:px-6">
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-semibold text-navy">{{ summary.route }}</p>
+            <p class="truncate text-xs text-muted">
+              {{ assignmentMode }} · {{ equipmentType }}
+              <template v-if="summary.price"> · {{ summary.price }}</template>
+            </p>
+          </div>
+          <button type="submit" form="publish-form" class="cc-btn w-auto shrink-0 px-6" :disabled="!isValid || saving">
+            {{ saving ? 'Publicando…' : 'Publicar carga' }}
+          </button>
+        </div>
+      </div>
     </template>
   </div>
 </template>

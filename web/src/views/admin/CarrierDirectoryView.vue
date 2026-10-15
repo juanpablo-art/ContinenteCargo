@@ -1,17 +1,24 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { Users } from '@lucide/vue';
+import { Users, Search, Check, X, ChevronRight, MailPlus } from '@lucide/vue';
 import { useDataStore } from '@/stores/data';
 import EmptyState from '@/components/EmptyState.vue';
-import type { UserStatus } from '@/lib/models';
+import PageHeader from '@/components/PageHeader.vue';
+import StatusBadge from '@/components/StatusBadge.vue';
+import { initials } from '@/lib/format';
+import { toast } from '@/lib/toast';
+
+type Filter = 'pending' | 'approved' | 'all';
 
 const store = useDataStore();
-const filter = ref<'pending' | 'approved' | 'all'>('pending');
+const all = computed(() => store.users.filter((u) => u.role !== 'admin'));
+const pendingCount = computed(() => all.value.filter((u) => u.status === 'pending_approval').length);
+const filter = ref<Filter>(pendingCount.value ? 'pending' : 'all');
 const search = ref('');
 const busyId = ref<string | null>(null);
 
 const carriers = computed(() => {
-  let list = store.users.filter((u) => u.role !== 'admin');
+  let list = all.value;
   if (filter.value === 'pending') {
     list = list.filter((u) => u.status === 'pending_approval');
   } else if (filter.value === 'approved') {
@@ -26,51 +33,30 @@ const carriers = computed(() => {
         u.phone.includes(q),
     );
   }
-  return list.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  return list.slice().sort((a, b) => a.name.localeCompare(b.name, 'es'));
 });
 
-function statusLabel(s: UserStatus) {
-  switch (s) {
-    case 'pending_approval':
-      return 'Pendiente';
-    case 'approved':
-      return 'Aprobado';
-    case 'rejected':
-      return 'Rechazado';
-    case 'suspended':
-      return 'Suspendido';
-    default:
-      return s;
-  }
+const chips = computed(() => [
+  { id: 'pending' as const, label: 'Pendientes', n: pendingCount.value },
+  { id: 'approved' as const, label: 'Aprobados', n: all.value.filter((u) => u.status === 'approved').length },
+  { id: 'all' as const, label: 'Todos', n: all.value.length },
+]);
+
+function coverageLabel(u: (typeof all.value)[number]) {
+  if (u.routes.length) return `${u.routes.length} ${u.routes.length === 1 ? 'ruta' : 'rutas'}`;
+  if (u.coverageStates.length) return `${u.coverageStates.length} estados`;
+  if (u.coverageZones.length) return u.coverageZones.join(', ');
+  return 'Cobertura nacional';
 }
 
-function statusClass(s: UserStatus) {
-  switch (s) {
-    case 'pending_approval':
-      return 'bg-orange-soft text-orange';
-    case 'approved':
-      return 'bg-success-soft text-success';
-    case 'rejected':
-    case 'suspended':
-      return 'bg-danger-soft text-danger';
-    default:
-      return 'bg-blue-soft text-muted';
-  }
-}
-
-async function approve(id: string) {
+async function act(id: string, approve: boolean, name: string) {
   busyId.value = id;
   try {
-    await store.approveCarrier(id);
-  } finally {
-    busyId.value = null;
-  }
-}
-
-async function reject(id: string) {
-  busyId.value = id;
-  try {
-    await store.rejectCarrier(id);
+    if (approve) await store.approveCarrier(id);
+    else await store.rejectCarrier(id);
+    toast.success(approve ? `${name} aprobado` : `${name} rechazado`);
+  } catch (e) {
+    toast.error('No se pudo actualizar', e instanceof Error ? e.message : undefined);
   } finally {
     busyId.value = null;
   }
@@ -79,96 +65,112 @@ async function reject(id: string) {
 
 <template>
   <div class="cc-page">
-    <h1 class="mb-1 text-xl font-bold text-navy">Transportistas</h1>
-    <p class="mb-4 text-sm text-muted">Directorio y aprobaciones de registro</p>
+    <PageHeader title="Transportistas" subtitle="Directorio y aprobaciones de registro">
+      <template #actions>
+        <RouterLink :to="{ name: 'admin-invitations' }" class="cc-btn-secondary w-auto px-4">
+          <MailPlus class="size-4" aria-hidden="true" />
+          Invitaciones
+        </RouterLink>
+      </template>
+    </PageHeader>
 
-    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-      <input
-        v-model="search"
-        class="cc-field py-2.5 sm:max-w-xs"
-        placeholder="Buscar por nombre, correo o teléfono…"
-      />
-      <div class="flex gap-2">
+    <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div class="cc-scroll-x">
         <button
-          v-for="chip in [
-            { id: 'pending' as const, label: 'Pendientes' },
-            { id: 'approved' as const, label: 'Aprobados' },
-            { id: 'all' as const, label: 'Todos' },
-          ]"
+          v-for="chip in chips"
           :key="chip.id"
           type="button"
-          class="rounded-full px-3 py-1.5 text-xs font-medium"
-          :class="
-            filter === chip.id
-              ? 'bg-brand text-white'
-              : 'border border-line bg-card text-muted'
-          "
+          class="cc-chip"
+          :class="filter === chip.id && 'cc-chip-active'"
           @click="filter = chip.id"
         >
           {{ chip.label }}
+          <span
+            class="rounded-full px-1.5 text-[11px] font-semibold tabular-nums"
+            :class="
+              filter === chip.id
+                ? 'bg-white/20'
+                : chip.id === 'pending' && chip.n
+                  ? 'bg-orange text-white'
+                  : 'bg-background text-muted'
+            "
+          >
+            {{ chip.n }}
+          </span>
         </button>
       </div>
+      <label class="relative block md:w-80">
+        <Search class="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+        <input
+          v-model="search"
+          type="search"
+          class="cc-field pl-10"
+          placeholder="Buscar por nombre, correo o teléfono"
+        />
+      </label>
     </div>
 
-    <EmptyState
-      v-if="!carriers.length"
-      title="Sin transportistas"
-      subtitle="No hay registros que coincidan con este filtro."
-    >
-      <template #icon><Users class="size-6" /></template>
-    </EmptyState>
+    <div v-if="!carriers.length" class="cc-card">
+      <EmptyState
+        :title="filter === 'pending' ? 'Sin solicitudes pendientes' : 'Sin transportistas'"
+        :subtitle="filter === 'pending' ? 'Todas las solicitudes de registro están atendidas.' : 'No hay registros que coincidan.'"
+      >
+        <template #icon><Users /></template>
+      </EmptyState>
+    </div>
 
-    <div v-else class="space-y-3">
-      <article
+    <div v-else class="cc-card divide-y divide-line overflow-hidden">
+      <div
         v-for="user in carriers"
         :key="user.uuid"
-        class="cc-card p-4 md:p-5"
+        class="flex flex-wrap items-center gap-3 px-4 py-3.5 transition hover:bg-background/60 sm:flex-nowrap md:px-5"
       >
-        <div class="flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-              <h2 class="font-semibold text-navy">{{ user.name }}</h2>
-              <span
-                class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                :class="statusClass(user.status)"
-              >
-                {{ statusLabel(user.status) }}
-              </span>
+        <RouterLink
+          :to="{ name: 'admin-carrier-detail', params: { id: user.uuid } }"
+          class="flex min-w-0 flex-1 items-center gap-3"
+        >
+          <span
+            class="flex size-10 shrink-0 items-center justify-center rounded-full text-[13px] font-bold"
+            :class="user.role === 'carrier' ? 'bg-blue-soft text-brand' : 'bg-navy/[0.07] text-navy'"
+          >
+            {{ initials(user.name) }}
+          </span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <p class="truncate text-sm font-semibold text-navy">{{ user.name }}</p>
+              <span v-if="user.handlesLTL" class="cc-badge bg-teal-50 px-2 text-teal-700">LTL</span>
             </div>
-            <p class="mt-1 text-sm text-muted">
-              {{ user.email }} · {{ user.phone }}
-            </p>
-            <p class="mt-0.5 text-xs text-muted">
+            <p class="mt-0.5 truncate text-xs text-muted">
               {{ user.role === 'carrier' ? 'Línea transportista' : 'Operador independiente' }}
-              <span v-if="user.handlesLTL"> · LTL</span>
-              <span v-if="user.routes.length">
-                · {{ user.routes.length }} rutas
-              </span>
-              <span v-else-if="user.coverageStates.length">
-                · {{ user.coverageStates.length }} estados
-              </span>
+              · {{ coverageLabel(user) }} · {{ user.email }}
             </p>
           </div>
-          <div v-if="user.status === 'pending_approval'" class="flex gap-2">
+        </RouterLink>
+        <div class="flex shrink-0 items-center gap-2">
+          <template v-if="user.status === 'pending_approval'">
             <button
               type="button"
-              class="rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              class="cc-btn-secondary h-9 w-auto px-3 text-[13px] text-danger"
               :disabled="busyId === user.uuid"
-              @click="approve(user.uuid)"
+              @click="act(user.uuid, false, user.name)"
             >
-              Aprobar
+              <X class="size-4" aria-hidden="true" /> Rechazar
             </button>
             <button
               type="button"
-              class="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-danger disabled:opacity-50"
+              class="cc-btn-success h-9 w-auto px-3 text-[13px]"
               :disabled="busyId === user.uuid"
-              @click="reject(user.uuid)"
+              @click="act(user.uuid, true, user.name)"
             >
-              Rechazar
+              <Check class="size-4" aria-hidden="true" /> Aprobar
             </button>
-          </div>
+          </template>
+          <template v-else>
+            <StatusBadge :status="user.status" />
+            <ChevronRight class="hidden size-4 text-muted sm:block" aria-hidden="true" />
+          </template>
         </div>
-      </article>
+      </div>
     </div>
   </div>
 </template>
