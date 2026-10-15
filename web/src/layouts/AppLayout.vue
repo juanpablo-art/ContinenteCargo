@@ -34,6 +34,7 @@ const adminNav: NavItem[] = [
   { name: 'admin-loads', label: 'Cargas', icon: FileText },
   { name: 'admin-carriers', label: 'Transportistas', icon: Users },
   { name: 'admin-units', label: 'Unidades', icon: Truck },
+  { name: 'notifications', label: 'Avisos', icon: Bell },
   { name: 'profile', label: 'Perfil', icon: UserCircle },
 ];
 
@@ -42,7 +43,7 @@ const carrierNav: NavItem[] = [
   { name: 'carrier-offers', label: 'Mis ofertas', icon: PackageSearch },
   { name: 'carrier-trips', label: 'Mis viajes', icon: Map },
   { name: 'carrier-units', label: 'Unidades', icon: Car },
-  { name: 'notifications', label: 'Avisos', icon: Bell },
+  { name: 'carrier-availability', label: 'Disponib.', icon: FileText },
   { name: 'profile', label: 'Perfil', icon: UserCircle },
 ];
 
@@ -84,6 +85,8 @@ function isActive(name: string) {
 }
 
 async function logout() {
+  const { stopAppListeners } = await import('@/lib/realtime');
+  stopAppListeners();
   await auth.logout();
   await router.push({ name: 'login' });
 }

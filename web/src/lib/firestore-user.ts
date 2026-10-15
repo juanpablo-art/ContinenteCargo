@@ -51,6 +51,8 @@ export function userToData(user: AppUser): DocumentData {
     status: user.status,
     canNegotiateRates: user.canNegotiateRates,
     handlesLTL: user.handlesLTL,
+    handlesLocal: Boolean(user.handlesLocal),
+    handlesIntraState: Boolean(user.handlesIntraState),
     createdAt: user.createdAt
       ? Timestamp.fromDate(user.createdAt)
       : Timestamp.now(),
@@ -62,6 +64,10 @@ export function userToData(user: AppUser): DocumentData {
   if (user.coverageEquipmentTypes.length) {
     data.coverageEquipmentTypes = user.coverageEquipmentTypes;
   }
+  if (user.coversUSA) data.coversUSA = true;
+  if (user.coverageUSAStates?.length) data.coverageUSAStates = user.coverageUSAStates;
+  if (user.notificationEmails?.length) data.notificationEmails = user.notificationEmails;
+  if (user.whatsappNumbers?.length) data.whatsappNumbers = user.whatsappNumbers;
   const digits = phoneDigits(user.phone);
   if (digits.length >= 10 && digits.length <= 15) {
     data.phoneDigits = digits;
@@ -90,6 +96,9 @@ export function parseUser(data: DocumentData): AppUser | null {
     companyId: typeof data.companyId === 'string' ? data.companyId : undefined,
     canNegotiateRates: Boolean(data.canNegotiateRates ?? true),
     handlesLTL: Boolean(data.handlesLTL ?? false),
+    handlesLocal: Boolean(data.handlesLocal ?? false),
+    handlesIntraState: Boolean(data.handlesIntraState ?? false),
+    coversUSA: Boolean(data.coversUSA ?? false),
     routes: Array.isArray(data.routes)
       ? data.routes.map(parseRoute).filter((r): r is CarrierRoute => r != null)
       : [],
@@ -102,6 +111,16 @@ export function parseUser(data: DocumentData): AppUser | null {
     coverageEquipmentTypes: Array.isArray(data.coverageEquipmentTypes)
       ? (data.coverageEquipmentTypes as EquipmentType[])
       : [],
+    coverageUSAStates: Array.isArray(data.coverageUSAStates)
+      ? (data.coverageUSAStates as string[])
+      : [],
+    notificationEmails: Array.isArray(data.notificationEmails)
+      ? (data.notificationEmails as string[])
+      : [],
+    whatsappNumbers: Array.isArray(data.whatsappNumbers)
+      ? (data.whatsappNumbers as string[])
+      : [],
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : undefined,
   };
 }
 

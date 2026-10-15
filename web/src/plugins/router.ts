@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { homePathForRole, homeRouteNameForRole } from '@/lib/role-home';
+import { startAppListeners } from '@/lib/realtime';
 import type { UserRole } from '@/lib/models';
 
 const router = createRouter({
@@ -31,76 +32,78 @@ const router = createRouter({
             return homePathForRole(auth.currentUser?.role);
           },
         },
-        // Admin
         {
           path: 'admin/dashboard',
           name: 'admin-dashboard',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Inicio',
-            description: 'Panel de administración. Las métricas y cargas llegarán en el siguiente paso.',
-          },
+          component: () => import('@/views/admin/AdminDashboardView.vue'),
           meta: { requiresAuth: true, roles: ['admin'] as UserRole[], title: 'Inicio' },
         },
         {
           path: 'admin/loads',
           name: 'admin-loads',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Cargas',
-            description: 'Listado de cargas (placeholder).',
-          },
+          component: () => import('@/views/admin/AdminLoadsListView.vue'),
           meta: { requiresAuth: true, roles: ['admin'] as UserRole[], title: 'Cargas' },
         },
         {
           path: 'admin/loads/new',
           name: 'admin-load-new',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
+          component: () => import('@/views/admin/PublishLoadView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['admin'] as UserRole[],
             title: 'Publicar carga',
-            description: 'Formulario de publicación (placeholder).',
           },
-          meta: { requiresAuth: true, roles: ['admin'] as UserRole[], title: 'Publicar carga' },
         },
         {
           path: 'admin/loads/:id',
           name: 'admin-load-detail',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
+          component: () => import('@/views/admin/AdminLoadDetailView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['admin'] as UserRole[],
             title: 'Detalle de carga',
-            description: 'Detalle administrativo de la carga (placeholder).',
           },
-          meta: { requiresAuth: true, roles: ['admin'] as UserRole[], title: 'Detalle de carga' },
         },
         {
           path: 'admin/carriers',
           name: 'admin-carriers',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
+          component: () => import('@/views/admin/AdminCarriersView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['admin'] as UserRole[],
             title: 'Transportistas',
-            description: 'Directorio y aprobaciones (placeholder).',
           },
-          meta: { requiresAuth: true, roles: ['admin'] as UserRole[], title: 'Transportistas' },
+        },
+        {
+          path: 'admin/carriers/:id',
+          name: 'admin-carrier-detail',
+          component: () => import('@/views/admin/AdminCarrierDetailView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['admin'] as UserRole[],
+            title: 'Transportista',
+          },
+        },
+        {
+          path: 'admin/invitations',
+          name: 'admin-invitations',
+          component: () => import('@/views/admin/AdminInvitationsView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['admin'] as UserRole[],
+            title: 'Invitaciones',
+          },
         },
         {
           path: 'admin/units',
           name: 'admin-units',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Unidades',
-            description: 'Disponibilidad de unidades (placeholder).',
-          },
+          component: () => import('@/views/admin/AdminUnitsView.vue'),
           meta: { requiresAuth: true, roles: ['admin'] as UserRole[], title: 'Unidades' },
         },
-        // Carrier / independent operator
         {
           path: 'carrier/home',
           name: 'carrier-home',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Cargas disponibles',
-            description: 'Marketplace de cargas para transportistas (placeholder).',
-          },
+          component: () => import('@/views/carrier/CarrierHomeView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
@@ -110,11 +113,7 @@ const router = createRouter({
         {
           path: 'carrier/loads/:id',
           name: 'carrier-load-detail',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Detalle de carga',
-            description: 'Detalle y confirmación de carga (placeholder).',
-          },
+          component: () => import('@/views/carrier/CarrierLoadDetailView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
@@ -124,11 +123,7 @@ const router = createRouter({
         {
           path: 'carrier/offers',
           name: 'carrier-offers',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Mis ofertas',
-            description: 'Ofertas enviadas (placeholder).',
-          },
+          component: () => import('@/views/carrier/CarrierOffersView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
@@ -138,11 +133,7 @@ const router = createRouter({
         {
           path: 'carrier/trips',
           name: 'carrier-trips',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Mis viajes',
-            description: 'Viajes asignados (placeholder).',
-          },
+          component: () => import('@/views/carrier/CarrierTripsView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
@@ -152,11 +143,7 @@ const router = createRouter({
         {
           path: 'carrier/trips/:id',
           name: 'carrier-trip-detail',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Detalle de viaje',
-            description: 'Seguimiento del viaje (placeholder).',
-          },
+          component: () => import('@/views/carrier/CarrierTripDetailView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
@@ -166,26 +153,27 @@ const router = createRouter({
         {
           path: 'carrier/units',
           name: 'carrier-units',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Mis unidades',
-            description: 'Flota y disponibilidad (placeholder).',
-          },
+          component: () => import('@/views/carrier/CarrierUnitsView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['carrier', 'independent_operator'] as UserRole[],
             title: 'Unidades',
           },
         },
-        // Shared
+        {
+          path: 'carrier/availability',
+          name: 'carrier-availability',
+          component: () => import('@/views/carrier/CarrierAvailabilityView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['carrier', 'independent_operator'] as UserRole[],
+            title: 'Disponibilidad',
+          },
+        },
         {
           path: 'notifications',
           name: 'notifications',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Avisos',
-            description: 'Notificaciones (placeholder).',
-          },
+          component: () => import('@/views/shared/NotificationsView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['admin', 'carrier', 'independent_operator'] as UserRole[],
@@ -195,11 +183,7 @@ const router = createRouter({
         {
           path: 'profile',
           name: 'profile',
-          component: () => import('@/views/placeholders/ShellPlaceholder.vue'),
-          props: {
-            title: 'Perfil',
-            description: 'Datos de cuenta y preferencias (placeholder).',
-          },
+          component: () => import('@/views/shared/ProfileView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['admin', 'carrier', 'independent_operator'] as UserRole[],
@@ -233,6 +217,10 @@ router.beforeEach(async (to) => {
   const roles = to.meta.roles as UserRole[] | undefined;
   if (roles?.length && auth.currentUser && !roles.includes(auth.currentUser.role)) {
     return homePathForRole(auth.currentUser.role);
+  }
+
+  if (auth.isLoggedIn && to.meta.requiresAuth) {
+    startAppListeners();
   }
 
   return true;

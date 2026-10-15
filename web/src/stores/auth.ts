@@ -22,6 +22,7 @@ import type {
   UserRole,
 } from '@/lib/models';
 import { newUuid } from '@/lib/models';
+import { useDataStore } from '@/stores/data';
 
 export interface RegisterPayload {
   name: string;
@@ -107,6 +108,7 @@ export const useAuthStore = defineStore('auth', {
         const profile = await fetchUserProfile(firebaseUser.uid);
         if (profile) {
           this.currentUser = profile;
+          useDataStore().startListeners();
         } else {
           await signOut(auth);
           this.currentUser = null;
@@ -137,6 +139,7 @@ export const useAuthStore = defineStore('auth', {
           return false;
         }
         this.currentUser = profile;
+        useDataStore().startListeners();
         return true;
       } catch (err) {
         this.errorMessage = mapAuthError(err as AuthError);
@@ -239,6 +242,7 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async logout() {
+      useDataStore().stopListeners();
       await signOut(auth);
       this.currentUser = null;
       this.errorMessage = null;
