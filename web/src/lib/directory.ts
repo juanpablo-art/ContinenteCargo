@@ -640,14 +640,18 @@ export async function saveCarrierProfile(id: string, input: CarrierProfileDraft)
   });
 }
 
-function channelFor(record: CarrierDirectoryRecord, requested: InviteChannel): 'whatsapp' | 'email' | null {
-  const phone = directoryPhone(record.phone);
-  const email = record.email.trim();
-  if (requested === 'whatsapp') return phone ? 'whatsapp' : null;
-  if (requested === 'email') return email.includes('@') ? 'email' : null;
-  if (phone) return 'whatsapp';
-  if (email.includes('@')) return 'email';
-  return null;
+function channelsFor(
+  record: CarrierDirectoryRecord,
+  requested: InviteChannel,
+): Array<'whatsapp' | 'email'> {
+  const phone = Boolean(directoryPhone(record.phone));
+  const email = record.email.trim().includes('@');
+  if (requested === 'whatsapp') return phone ? ['whatsapp'] : [];
+  if (requested === 'email') return email ? ['email'] : [];
+  const channels: Array<'whatsapp' | 'email'> = [];
+  if (phone) channels.push('whatsapp');
+  if (email) channels.push('email');
+  return channels;
 }
 
 async function mapPool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
@@ -674,35 +678,42 @@ export async function inviteFromDirectory(
   let failed = 0;
   const pending = records.filter((record) => record.followUp !== 'ready' && record.followUp !== 'issue');
   await mapPool(pending, 8, async (record) => {
-    const chosen = channelFor(record, channel);
+    const channels = channelsFor(record, channel);
     const rawName = (record.contactName || record.companyName).trim();
     const name = rawName.slice(0, 80);
-    if (!chosen || !name) {
+    if (!channels.length || !name) {
       failed += 1;
       return;
     }
-    const invite: Record<string, unknown> = {
-      name,
-      phone: directoryPhone(record.phone) || record.phone,
-      channel: chosen,
-      status: 'pending',
-      createdAt: now,
-      createdBy,
-      preProfilePhone: record.id,
-    };
-    if (record.email.trim()) invite.email = record.email.trim();
-    if (pricerEmail) invite.pricerEmail = pricerEmail;
-    try {
-      await setDoc(doc(collection(db, 'invitations')), invite);
-      success += 1;
-    } catch {
+    const sentChannels: Array<'whatsapp' | 'email'> = [];
+    for (const chosen of channels) {
+      const invite: Record<string, unknown> = {
+        name,
+        phone: directoryPhone(record.phone) || record.phone,
+        channel: chosen,
+        status: 'pending',
+        createdAt: now,
+        createdBy,
+        preProfilePhone: record.id,
+      };
+      if (record.email.trim()) invite.email = record.email.trim();
+      if (pricerEmail) invite.pricerEmail = pricerEmail;
+      try {
+        await setDoc(doc(collection(db, 'invitations')), invite);
+        sentChannels.push(chosen);
+      } catch {
+        // The other channel can still go out. The carrier fails only if none do.
+      }
+    }
+    if (!sentChannels.length) {
       failed += 1;
       return;
     }
+    success += 1;
     const profile: Record<string, unknown> = {
       status: 'sent',
       lastInvitedAt: now,
-      inviteChannel: chosen,
+      inviteChannel: sentChannels.join('+'),
     };
     if (pricerEmail) {
       profile.pricerEmail = pricerEmail;

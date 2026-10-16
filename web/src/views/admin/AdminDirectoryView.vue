@@ -243,7 +243,7 @@ async function deliver(
 
 function inviteQueue(targets: CarrierDirectoryRecord[]) {
   const whatsapp = targets.filter((r) => directoryPhone(r.phone)).length;
-  const email = targets.length - whatsapp;
+  const email = targets.filter((r) => r.email.includes('@')).length;
   const label =
     email && whatsapp ? `WhatsApp (${whatsapp}) y correo (${email})` : whatsapp ? 'WhatsApp' : 'correo';
   return deliver(targets, 'auto', label);
