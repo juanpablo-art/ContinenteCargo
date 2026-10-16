@@ -12,6 +12,7 @@ import {
   Inbox,
   Truck,
   FileWarning,
+  Users,
 } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
@@ -97,10 +98,16 @@ async function run(id: string, action: () => Promise<unknown>, ok: string) {
         <p class="text-sm font-medium text-muted">{{ greeting }}, {{ firstName }}</p>
         <h1 class="cc-h1 mt-0.5">Panel de operación</h1>
       </div>
-      <RouterLink :to="{ name: 'admin-load-new' }" class="cc-btn w-auto px-5">
-        <Plus class="size-4" aria-hidden="true" />
-        Publicar carga
-      </RouterLink>
+      <div class="flex flex-wrap gap-2">
+        <RouterLink :to="{ name: 'admin-directory' }" class="cc-btn-secondary w-auto px-4">
+          <Users class="size-4" aria-hidden="true" />
+          Directorio
+        </RouterLink>
+        <RouterLink :to="{ name: 'admin-load-new' }" class="cc-btn w-auto px-5">
+          <Plus class="size-4" aria-hidden="true" />
+          Publicar carga
+        </RouterLink>
+      </div>
     </header>
 
     <div class="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-4">

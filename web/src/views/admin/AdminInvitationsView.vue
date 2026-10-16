@@ -1,88 +1,92 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { Mail, MessageCircle, Send } from '@lucide/vue';
+import { useAuthStore } from '@/stores/auth';
 import {
-  addDoc,
-  collection,
-  onSnapshot,
-  type Unsubscribe,
-} from 'firebase/firestore';
-import { Send, MailPlus, Phone, Mail } from '@lucide/vue';
-import { db } from '@/plugins/firebase';
-import { initials, timeAgo } from '@/lib/format';
-import { toast } from '@/lib/toast';
+  saveManualPreProfileAndInvite,
+  upsertDemoRecord,
+} from '@/lib/directory';
+import { EQUIPMENT_TYPES, MEXICAN_ZONES, phoneDigits } from '@/lib/models';
 import PageHeader from '@/components/PageHeader.vue';
+import ResultState from '@/components/ResultState.vue';
+import { toast } from '@/lib/toast';
 
-interface Invitation {
-  id: string;
-  name: string;
-  phone?: string;
-  email?: string;
-  status: string;
-  createdAt: Date;
-}
+const auth = useAuthStore();
+const router = useRouter();
+const isDemo = computed(() => auth.currentUser?.uuid === 'demo-layout');
 
-const form = reactive({ name: '', phone: '', email: '' });
+const step = ref<1 | 2>(1);
 const sending = ref(false);
-const loaded = ref(false);
-const invitations = ref<Invitation[]>([]);
-let unsub: Unsubscribe | null = null;
+const sent = ref(false);
 
-const statusLabels: Record<string, { label: string; cls: string }> = {
-  sent: { label: 'Enviada', cls: 'bg-blue-soft text-blue-ink' },
-  accepted: { label: 'Aceptada', cls: 'bg-success-soft text-success' },
-  expired: { label: 'Vencida', cls: 'bg-slate-100 text-slate-600' },
-};
-
-onMounted(() => {
-  unsub = onSnapshot(
-    collection(db, 'invitations'),
-    (snap) => {
-      loaded.value = true;
-      invitations.value = snap.docs
-        .map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            name: String(data.name ?? ''),
-            phone: data.phone ? String(data.phone) : undefined,
-            email: data.email ? String(data.email) : undefined,
-            status: String(data.status ?? 'sent'),
-            createdAt:
-              typeof data.createdAt?.toDate === 'function'
-                ? data.createdAt.toDate()
-                : new Date(),
-          };
-        })
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    },
-    () => {
-      loaded.value = true;
-    },
-  );
+const form = reactive({
+  companyName: '',
+  contactName: '',
+  baseCity: '',
+  phone: '',
+  email: '',
+  handlesLTL: false,
+  handlesLocal: false,
+  handlesIntraState: false,
+  coversUSA: false,
+  equipment: [] as string[],
+  zones: [] as string[],
 });
 
-onUnmounted(() => unsub?.());
+const digits = computed(() => phoneDigits(form.phone));
+const hasPhone = computed(() => digits.value.length === 10);
+const hasEmail = computed(() => form.email.includes('@'));
+const basicValid = computed(
+  () => (form.contactName.trim() || form.companyName.trim()) && (hasPhone.value || hasEmail.value),
+);
+const displayName = computed(() => form.companyName.trim() || form.contactName.trim());
+
+function toggle(list: string[], value: string) {
+  const idx = list.indexOf(value);
+  if (idx >= 0) list.splice(idx, 1);
+  else list.push(value);
+}
 
 async function send() {
-  if (!form.name.trim() || (!form.phone && !form.email)) {
-    toast.error('Faltan datos', 'Escribe el nombre y un teléfono o correo.');
-    return;
-  }
   sending.value = true;
   try {
-    await addDoc(collection(db, 'invitations'), {
-      name: form.name,
-      phone: form.phone || '',
-      email: form.email || '',
-      status: 'sent',
-      createdAt: new Date(),
-    });
-    toast.success('Invitación enviada', form.name);
-    form.name = '';
-    form.phone = '';
-    form.email = '';
+    const input = {
+      contactName: form.contactName.trim(),
+      companyName: form.companyName.trim(),
+      phone: digits.value,
+      email: form.email.trim().toLowerCase(),
+      baseCity: form.baseCity.trim(),
+      equipmentTypes: [...form.equipment],
+      coverageZones: [...form.zones],
+      handlesLTL: form.handlesLTL,
+      handlesLocal: form.handlesLocal,
+      handlesIntraState: form.handlesIntraState,
+      coversUSA: form.coversUSA,
+    };
+    if (isDemo.value) {
+      if (input.phone) {
+        upsertDemoRecord({
+          id: input.phone,
+          companyName: input.companyName || input.contactName,
+          contactName: input.contactName,
+          phone: input.phone,
+          email: input.email,
+          baseCity: input.baseCity,
+          equipmentTypes: input.equipmentTypes,
+          coverageZones: input.coverageZones,
+          handlesLTL: input.handlesLTL,
+          status: 'pending_invitation',
+        });
+      }
+    } else {
+      await saveManualPreProfileAndInvite(input, auth.currentUser?.uuid ?? '');
+    }
+    sent.value = true;
+    toast.success('Invitación enviada', displayName.value);
   } catch (e) {
-    toast.error('No se pudo enviar', e instanceof Error ? e.message : undefined);
+    toast.error('No se pudo guardar', e instanceof Error ? e.message : undefined);
+    step.value = 1;
   } finally {
     sending.value = false;
   }
@@ -92,78 +96,132 @@ async function send() {
 <template>
   <div class="cc-page">
     <PageHeader
-      title="Invitaciones"
-      subtitle="Invita transportistas a registrarse en Continente Conecta"
-      :back="{ name: 'admin-carriers' }"
-      back-label="Transportistas"
+      title="Invitación manual"
+      subtitle="El transportista solo confirma sus datos y elige una contraseña"
+      :back="{ name: 'admin-directory' }"
+      back-label="Directorio"
     />
 
-    <div class="grid gap-5 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:items-start">
-      <form class="cc-card overflow-hidden" @submit.prevent="send">
-        <div class="flex items-center gap-3 border-b border-line bg-background/50 px-5 py-4">
-          <span class="cc-icon-tile size-9"><MailPlus class="size-[18px]" aria-hidden="true" /></span>
-          <div>
-            <h2 class="cc-h2">Nueva invitación</h2>
-            <p class="text-xs text-muted">Recibirá un enlace para registrarse</p>
-          </div>
+    <ResultState
+      v-if="sent"
+      ok
+      title="Invitación enviada"
+      :body="`${displayName} recibirá las instrucciones para completar su registro.`"
+      action-label="Volver al directorio"
+      @action="router.push({ name: 'admin-directory' })"
+    />
+
+    <form v-else class="mx-auto max-w-2xl space-y-5" @submit.prevent="step === 1 ? (step = 2) : send()">
+      <ol class="flex items-center gap-3 text-sm font-medium">
+        <li class="flex items-center gap-2" :class="step === 1 ? 'text-brand' : 'text-muted'">
+          <span class="flex size-6 items-center justify-center rounded-full text-xs" :class="step === 1 ? 'bg-brand text-white' : 'bg-success text-white'">1</span>
+          Datos
+        </li>
+        <li class="h-px flex-1 bg-line" />
+        <li class="flex items-center gap-2" :class="step === 2 ? 'text-brand' : 'text-muted'">
+          <span class="flex size-6 items-center justify-center rounded-full text-xs" :class="step === 2 ? 'bg-brand text-white' : 'bg-background text-muted'">2</span>
+          Cobertura
+        </li>
+      </ol>
+
+      <section v-if="step === 1" class="cc-card space-y-4 p-5">
+        <h2 class="cc-h2">Datos del transportista</h2>
+        <div>
+          <label class="cc-label" for="co">Empresa / razón social</label>
+          <input id="co" v-model="form.companyName" class="cc-field" />
         </div>
-        <div class="space-y-4 p-5">
-          <div>
-            <label class="cc-label" for="inv-name">Nombre o empresa</label>
-            <input id="inv-name" v-model="form.name" class="cc-field" placeholder="Transportes del Norte" required />
-          </div>
-          <div>
-            <label class="cc-label" for="inv-phone">Teléfono (WhatsApp)</label>
-            <input id="inv-phone" v-model="form.phone" type="tel" class="cc-field" placeholder="81 1234 5678" />
-          </div>
-          <div>
-            <label class="cc-label" for="inv-email">Correo</label>
-            <input id="inv-email" v-model="form.email" type="email" class="cc-field" placeholder="trafico@empresa.mx" />
-            <p class="cc-hint">Se requiere teléfono o correo.</p>
-          </div>
+        <div>
+          <label class="cc-label" for="contact">Nombre del contacto</label>
+          <input id="contact" v-model="form.contactName" class="cc-field" />
+        </div>
+        <div>
+          <label class="cc-label" for="city">Ciudad / patio base</label>
+          <input id="city" v-model="form.baseCity" class="cc-field" />
+        </div>
+        <h2 class="cc-h2 pt-2">Contacto</h2>
+        <div>
+          <label class="cc-label" for="phone">WhatsApp / teléfono</label>
+          <input id="phone" v-model="form.phone" type="tel" inputmode="numeric" class="cc-field" placeholder="10 dígitos" />
+          <p v-if="form.phone && !hasPhone" class="cc-hint text-danger">
+            Se requieren 10 dígitos ({{ digits.length }}/10)
+          </p>
+        </div>
+        <div>
+          <label class="cc-label" for="email">Correo electrónico</label>
+          <input id="email" v-model="form.email" type="email" class="cc-field" />
+        </div>
+        <p v-if="hasPhone || hasEmail" class="flex flex-wrap items-center gap-2 text-xs text-muted">
+          Se enviará por
+          <span v-if="hasPhone" class="cc-badge bg-success-soft text-success">
+            <MessageCircle class="size-3" aria-hidden="true" /> WhatsApp
+          </span>
+          <span v-if="hasEmail" class="cc-badge bg-blue-soft text-blue-ink">
+            <Mail class="size-3" aria-hidden="true" /> Correo
+          </span>
+        </p>
+        <div class="space-y-3 pt-1">
+          <h2 class="cc-h2">Capacidades</h2>
+          <label class="flex items-start gap-3 text-sm">
+            <input v-model="form.handlesLTL" type="checkbox" class="mt-1 size-4" />
+            <span><span class="font-medium text-navy">Carga consolidada (LTL)</span><span class="block text-xs text-muted">Acepta cargas parciales</span></span>
+          </label>
+          <label class="flex items-start gap-3 text-sm">
+            <input v-model="form.handlesLocal" type="checkbox" class="mt-1 size-4" />
+            <span><span class="font-medium text-navy">Rutas locales</span><span class="block text-xs text-muted">Misma ciudad o zona metropolitana</span></span>
+          </label>
+          <label class="flex items-start gap-3 text-sm">
+            <input v-model="form.handlesIntraState" type="checkbox" class="mt-1 size-4" />
+            <span><span class="font-medium text-navy">Rutas intraestatales</span><span class="block text-xs text-muted">Entre ciudades del mismo estado</span></span>
+          </label>
+        </div>
+        <button type="submit" class="cc-btn" :disabled="!basicValid">Siguiente: cobertura y equipo</button>
+        <p class="text-center text-[11px] text-muted">
+          La cobertura es opcional. El transportista puede completarla al registrarse.
+        </p>
+      </section>
+
+      <section v-else class="cc-card space-y-4 p-5">
+        <h2 class="cc-h2">Equipo</h2>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            v-for="eq in EQUIPMENT_TYPES"
+            :key="eq"
+            type="button"
+            class="cc-chip"
+            :class="form.equipment.includes(eq) && 'cc-chip-active'"
+            @click="toggle(form.equipment, eq)"
+          >
+            {{ eq }}
+          </button>
+        </div>
+        <h2 class="cc-h2">Zonas de cobertura</h2>
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            v-for="zone in MEXICAN_ZONES"
+            :key="zone.id"
+            type="button"
+            class="cc-chip"
+            :class="form.zones.includes(zone.id) && 'cc-chip-active'"
+            @click="toggle(form.zones, zone.id)"
+          >
+            {{ zone.id }}
+          </button>
+        </div>
+        <label class="flex items-center gap-3 text-sm font-medium text-navy">
+          <input v-model="form.coversUSA" type="checkbox" class="size-4" />
+          También cubre Estados Unidos
+        </label>
+        <p v-if="!form.equipment.length && !form.zones.length" class="text-xs text-muted">
+          Puedes enviar sin cobertura. El transportista la completará al registrarse.
+        </p>
+        <div class="flex gap-2">
+          <button type="button" class="cc-btn-secondary" @click="step = 1">Atrás</button>
           <button type="submit" class="cc-btn" :disabled="sending">
             <Send class="size-4" aria-hidden="true" />
             {{ sending ? 'Enviando…' : 'Enviar invitación' }}
           </button>
         </div>
-      </form>
-
-      <section class="min-w-0">
-        <div class="mb-3 flex items-center justify-between">
-          <h2 class="cc-h2">Enviadas</h2>
-          <span class="text-xs font-medium text-muted">{{ invitations.length }}</span>
-        </div>
-        <div v-if="!loaded" class="cc-card space-y-3 p-4">
-          <div v-for="i in 3" :key="i" class="flex items-center gap-3">
-            <div class="cc-skeleton size-9 rounded-full" />
-            <div class="flex-1 space-y-1.5">
-              <div class="cc-skeleton h-3.5 w-1/2" />
-              <div class="cc-skeleton h-3 w-1/3" />
-            </div>
-          </div>
-        </div>
-        <div v-else-if="!invitations.length" class="rounded-2xl border border-dashed border-line px-6 py-12 text-center">
-          <MailPlus class="mx-auto size-6 text-muted" aria-hidden="true" />
-          <p class="mt-3 text-sm font-semibold text-navy">Aún no has enviado invitaciones</p>
-        </div>
-        <ul v-else class="cc-card divide-y divide-line overflow-hidden">
-          <li v-for="i in invitations" :key="i.id" class="flex items-center gap-3 px-4 py-3.5">
-            <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-navy/[0.07] text-[12px] font-bold text-navy">
-              {{ initials(i.name) }}
-            </span>
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-semibold text-navy">{{ i.name }}</p>
-              <p class="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
-                <component :is="i.phone ? Phone : Mail" class="size-3 shrink-0" aria-hidden="true" />
-                {{ i.phone || i.email }} · {{ timeAgo(i.createdAt) }}
-              </p>
-            </div>
-            <span class="cc-badge" :class="(statusLabels[i.status] ?? statusLabels.sent).cls">
-              {{ (statusLabels[i.status] ?? { label: i.status }).label }}
-            </span>
-          </li>
-        </ul>
       </section>
-    </div>
+    </form>
   </div>
 </template>

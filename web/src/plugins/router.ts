@@ -85,13 +85,23 @@ const router = createRouter({
           },
         },
         {
+          path: 'admin/directory',
+          name: 'admin-directory',
+          component: () => import('@/views/admin/AdminDirectoryView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['admin'] as UserRole[],
+            title: 'Directorio',
+          },
+        },
+        {
           path: 'admin/invitations',
           name: 'admin-invitations',
           component: () => import('@/views/admin/AdminInvitationsView.vue'),
           meta: {
             requiresAuth: true,
             roles: ['admin'] as UserRole[],
-            title: 'Invitaciones',
+            title: 'Invitación manual',
           },
         },
         {

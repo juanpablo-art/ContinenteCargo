@@ -67,9 +67,9 @@ async function act(id: string, approve: boolean, name: string) {
   <div class="cc-page">
     <PageHeader title="Transportistas" subtitle="Directorio y aprobaciones de registro">
       <template #actions>
-        <RouterLink :to="{ name: 'admin-invitations' }" class="cc-btn-secondary w-auto px-4">
+        <RouterLink :to="{ name: 'admin-directory' }" class="cc-btn-secondary w-auto px-4">
           <MailPlus class="size-4" aria-hidden="true" />
-          Invitaciones
+          Directorio
         </RouterLink>
       </template>
     </PageHeader>

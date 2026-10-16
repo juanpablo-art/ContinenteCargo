@@ -52,7 +52,7 @@ const adminGroups: NavGroup[] = [
         name: 'admin-carriers',
         label: 'Transportistas',
         icon: Users,
-        match: ['admin-carrier', 'admin-invitations'],
+        match: ['admin-carrier', 'admin-invitations', 'admin-directory'],
         mobile: true,
       },
       { name: 'admin-units', label: 'Unidades', icon: Truck, mobile: true },
