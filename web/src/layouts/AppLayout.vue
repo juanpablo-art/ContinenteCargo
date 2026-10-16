@@ -13,6 +13,7 @@ import {
   Radio,
   LogOut,
   Search,
+  BookUser,
 } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
@@ -91,8 +92,16 @@ const pricerGroups: NavGroup[] = [
   {
     label: 'Operación',
     items: [
+      { name: 'pricer-dashboard', label: 'Inicio', icon: LayoutDashboard, mobile: true },
       { name: 'pricer-loads', label: 'Cargas', icon: Package, match: ['admin-load-detail'], mobile: true },
       { name: 'pricer-carriers', label: 'Transportistas', icon: Users, mobile: true },
+      {
+        name: 'pricer-directory',
+        label: 'Directorio',
+        icon: BookUser,
+        match: ['pricer-invitations'],
+        mobile: true,
+      },
     ],
   },
   {

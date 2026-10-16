@@ -111,6 +111,12 @@ const router = createRouter({
           meta: { requiresAuth: true, roles: ['admin'] as UserRole[], title: 'Unidades' },
         },
         {
+          path: 'pricer/dashboard',
+          name: 'pricer-dashboard',
+          component: () => import('@/views/pricer/PricerDashboardView.vue'),
+          meta: { requiresAuth: true, roles: ['pricer'] as UserRole[], title: 'Inicio' },
+        },
+        {
           path: 'pricer/loads',
           name: 'pricer-loads',
           component: () => import('@/views/pricer/PricerHomeView.vue'),
@@ -125,6 +131,18 @@ const router = createRouter({
             roles: ['pricer'] as UserRole[],
             title: 'Mis transportistas',
           },
+        },
+        {
+          path: 'pricer/directory',
+          name: 'pricer-directory',
+          component: () => import('@/views/admin/AdminDirectoryView.vue'),
+          meta: { requiresAuth: true, roles: ['pricer'] as UserRole[], title: 'Directorio' },
+        },
+        {
+          path: 'pricer/invitations',
+          name: 'pricer-invitations',
+          component: () => import('@/views/admin/AdminInvitationsView.vue'),
+          meta: { requiresAuth: true, roles: ['pricer'] as UserRole[], title: 'Invitación manual' },
         },
         // Carrier / independent operator
         {

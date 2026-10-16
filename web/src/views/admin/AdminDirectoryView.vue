@@ -26,7 +26,9 @@ import { toast } from '@/lib/toast';
 type Filter = 'all' | 'pending' | 'invited' | 'registered';
 
 const auth = useAuthStore();
-const isDemo = computed(() => auth.currentUser?.uuid === 'demo-layout');
+const isAdmin = computed(() => auth.currentUser?.role === 'admin');
+const isDemo = computed(() => auth.currentUser?.email === 'demo@continente.local');
+const inviteRoute = computed(() => (isAdmin.value ? 'admin-invitations' : 'pricer-invitations'));
 
 const records = ref<CarrierDirectoryRecord[]>([]);
 const selected = ref<Set<string>>(new Set());
@@ -176,7 +178,7 @@ onMounted(load);
     <PageHeader
       :title="`Directorio${records.length ? ` (${records.length})` : ''}`"
       subtitle="Preperfiles para invitar transportistas por WhatsApp o correo"
-      :back="{ name: 'admin-carriers' }"
+      :back="isAdmin ? { name: 'admin-carriers' } : undefined"
       back-label="Transportistas"
     >
       <template #actions>
@@ -185,6 +187,7 @@ onMounted(load);
           <span class="hidden sm:inline">Refrescar</span>
         </button>
         <button
+          v-if="isAdmin"
           type="button"
           class="cc-btn-secondary w-auto px-3"
           :disabled="importing"
@@ -193,7 +196,7 @@ onMounted(load);
           <Download class="size-4" aria-hidden="true" />
           {{ importing ? 'Importando…' : 'Actualizar' }}
         </button>
-        <RouterLink :to="{ name: 'admin-invitations' }" class="cc-btn w-auto px-4">
+        <RouterLink :to="{ name: inviteRoute }" class="cc-btn w-auto px-4">
           <UserPlus class="size-4" aria-hidden="true" />
           Invitación manual
         </RouterLink>
@@ -213,13 +216,27 @@ onMounted(load);
     <div v-else-if="!records.length" class="cc-card">
       <EmptyState
         title="Directorio vacío"
-        subtitle="Importa el directorio de transportistas para comenzar a enviar invitaciones."
+        :subtitle="
+          isAdmin
+            ? 'Importa el directorio de transportistas para comenzar a enviar invitaciones.'
+            : 'Cuando haya preperfiles, podrás invitarlos por WhatsApp o correo.'
+        "
       >
         <template #icon><UserPlus /></template>
-        <button type="button" class="cc-btn w-auto px-5" :disabled="importing" @click="importDirectory">
+        <button
+          v-if="isAdmin"
+          type="button"
+          class="cc-btn w-auto px-5"
+          :disabled="importing"
+          @click="importDirectory"
+        >
           <Download class="size-4" aria-hidden="true" />
           {{ importing ? 'Importando…' : 'Importar directorio' }}
         </button>
+        <RouterLink v-else :to="{ name: inviteRoute }" class="cc-btn w-auto px-5">
+          <UserPlus class="size-4" aria-hidden="true" />
+          Invitación manual
+        </RouterLink>
       </EmptyState>
     </div>
 

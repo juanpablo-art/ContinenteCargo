@@ -18,7 +18,10 @@ import { toast } from '@/lib/toast';
 
 const auth = useAuthStore();
 const router = useRouter();
-const isDemo = computed(() => auth.currentUser?.uuid === 'demo-layout');
+const isDemo = computed(() => auth.currentUser?.email === 'demo@continente.local');
+const directoryRoute = computed(() =>
+  auth.currentUser?.role === 'pricer' ? 'pricer-directory' : 'admin-directory',
+);
 
 const step = ref<1 | 2>(1);
 const sending = ref(false);
@@ -121,7 +124,7 @@ async function send() {
     <PageHeader
       title="Invitación manual"
       subtitle="El transportista solo confirma sus datos y elige una contraseña"
-      :back="{ name: 'admin-directory' }"
+      :back="{ name: directoryRoute }"
       back-label="Directorio"
     />
 
@@ -131,7 +134,7 @@ async function send() {
       title="Invitación enviada"
       :body="`${displayName} recibirá las instrucciones para completar su registro.`"
       action-label="Volver al directorio"
-      @action="router.push({ name: 'admin-directory' })"
+      @action="router.push({ name: directoryRoute })"
     />
 
     <form v-else class="mx-auto max-w-2xl space-y-5" @submit.prevent="step === 1 ? (step = 2) : send()">

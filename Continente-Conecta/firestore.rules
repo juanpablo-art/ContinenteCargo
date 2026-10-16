@@ -767,17 +767,17 @@ service cloud.firestore {
     // Admin puede crear (invitación manual) y actualizar status.
     match /carrier_preprofiles/{phone} {
       allow get: if true;
-      allow list: if isAdmin();
-      // Admin puede crear nuevos perfiles (invitación manual)
-      allow create: if isAdmin();
-      // Admin puede actualizar datos del perfil y campos de invitación
-      allow update: if isAdmin();
+      allow list: if isAdminOrPricer();
+      // Admin y pricer pueden crear nuevos perfiles (invitación manual)
+      allow create: if isAdminOrPricer();
+      // Admin y pricer pueden actualizar datos del perfil y campos de invitación
+      allow update: if isAdminOrPricer();
       allow delete: if false;
     }
 
     match /invitations/{inviteId} {
       // Permite invitaciones por teléfono, correo, o ambos
-      allow create: if isAdmin() &&
+      allow create: if isAdminOrPricer() &&
         request.resource.data.keys().hasAll(['name', 'createdAt', 'status', 'createdBy']) &&
         request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80 &&
         (
