@@ -6,10 +6,14 @@ import {
   setDoc,
   Timestamp,
   updateDoc,
-  writeBatch,
   type DocumentData,
 } from 'firebase/firestore';
 import { auth, db } from '@/plugins/firebase';
+
+export type AccountStatus = '' | 'approved' | 'pending_approval' | 'rejected' | 'suspended';
+
+/** What the pricer should do next. The invite itself is always their action. */
+export type FollowUp = 'unsent' | 'waiting' | 'failed' | 'issue' | 'ready';
 
 /** Mirrors iOS CarrierDirectoryRecord / carrier_preprofiles. */
 export interface CarrierDirectoryRecord {
@@ -22,20 +26,30 @@ export interface CarrierDirectoryRecord {
   equipmentTypes: string[];
   coverageZones: string[];
   handlesLTL: boolean;
+  /** Invitation state on the preprofile: pending_invitation, sent, failed, registered. */
   status: string;
-  /** True when this phone or email already belongs to a transportista account. */
+  /** Pricer who sent the invitation and owns the follow-up. Empty until they send it. */
+  pricerEmail: string;
+  /** True when a carrier account already exists for this phone or email. */
   registered: boolean;
+  accountStatus: AccountStatus;
+  followUp: FollowUp;
 }
 
 export type InviteChannel = 'whatsapp' | 'email' | 'auto';
 
+export interface AccountMatch {
+  status: AccountStatus;
+}
+
 export interface RegistrationIndex {
-  phones: Set<string>;
-  emails: Set<string>;
+  phones: Map<string, AccountMatch>;
+  emails: Map<string, AccountMatch>;
 }
 
 interface ContactLike {
   role?: string;
+  status?: string;
   phone?: string;
   phoneDigits?: string;
   email?: string;
@@ -72,7 +86,10 @@ const demoDirectory: CarrierDirectoryRecord[] = [
     coverageZones: ['Norte', 'Centro'],
     handlesLTL: false,
     status: 'pending_invitation',
+    pricerEmail: '',
     registered: false,
+    accountStatus: '',
+    followUp: 'unsent',
   },
   {
     id: '3310002002',
@@ -85,7 +102,10 @@ const demoDirectory: CarrierDirectoryRecord[] = [
     coverageZones: ['Centro Occidente'],
     handlesLTL: true,
     status: 'pending_invitation',
+    pricerEmail: '',
     registered: false,
+    accountStatus: '',
+    followUp: 'unsent',
   },
   {
     id: '5510003003',
@@ -98,7 +118,10 @@ const demoDirectory: CarrierDirectoryRecord[] = [
     coverageZones: ['Centro', 'Sur'],
     handlesLTL: false,
     status: 'sent',
+    pricerEmail: '',
     registered: false,
+    accountStatus: '',
+    followUp: 'waiting',
   },
   {
     id: '6640004004',
@@ -111,7 +134,10 @@ const demoDirectory: CarrierDirectoryRecord[] = [
     coverageZones: ['Noroeste'],
     handlesLTL: false,
     status: 'registered',
-    registered: true,
+    pricerEmail: '',
+    registered: false,
+    accountStatus: '',
+    followUp: 'issue',
   },
   {
     id: '8445550192',
@@ -124,7 +150,42 @@ const demoDirectory: CarrierDirectoryRecord[] = [
     coverageZones: ['Norte'],
     handlesLTL: false,
     status: 'sent',
+    pricerEmail: '',
     registered: false,
+    accountStatus: '',
+    followUp: 'waiting',
+  },
+  {
+    id: '8112345678',
+    companyName: 'Héctor Villarreal',
+    contactName: 'Héctor Villarreal',
+    phone: '8112345678',
+    email: 'hector.v@gmail.com',
+    baseCity: 'Monterrey, N.L.',
+    equipmentTypes: ['Rabón'],
+    coverageZones: ['Norte'],
+    handlesLTL: false,
+    status: 'sent',
+    pricerEmail: '',
+    registered: false,
+    accountStatus: '',
+    followUp: 'waiting',
+  },
+  {
+    id: '4775550110',
+    companyName: 'Logística Bajío Express',
+    contactName: 'Logística Bajío Express',
+    phone: '4775550110',
+    email: 'contacto@bajioexpress.mx',
+    baseCity: 'León, Guanajuato',
+    equipmentTypes: ["Caja Seca 53'"],
+    coverageZones: ['Bajío'],
+    handlesLTL: true,
+    status: 'sent',
+    pricerEmail: 'otro.pricer@continentecargo.com',
+    registered: false,
+    accountStatus: '',
+    followUp: 'waiting',
   },
   {
     id: '9990005005',
@@ -137,7 +198,10 @@ const demoDirectory: CarrierDirectoryRecord[] = [
     coverageZones: ['Sureste'],
     handlesLTL: true,
     status: 'failed',
+    pricerEmail: '',
     registered: false,
+    accountStatus: '',
+    followUp: 'failed',
   },
 ];
 
@@ -164,50 +228,144 @@ export function directoryPhone(phone: string): string {
   return digits.length === 10 ? digits : '';
 }
 
-function addPhone(phones: Set<string>, value: unknown) {
-  if (typeof value !== 'string' || !value) return;
-  const digits = directoryPhone(value);
-  if (digits) phones.add(digits);
+function asAccountStatus(value: unknown): AccountStatus {
+  if (
+    value === 'approved' ||
+    value === 'pending_approval' ||
+    value === 'rejected' ||
+    value === 'suspended'
+  ) {
+    return value;
+  }
+  return '';
 }
 
-function addEmail(emails: Set<string>, value: unknown) {
-  if (typeof value !== 'string') return;
-  const email = value.trim().toLowerCase();
-  if (email.includes('@')) emails.add(email);
+const ACCOUNT_RANK: Record<AccountStatus, number> = {
+  '': 0,
+  approved: 1,
+  pending_approval: 2,
+  suspended: 3,
+  rejected: 4,
+};
+
+function remember(map: Map<string, AccountMatch>, key: string, status: AccountStatus) {
+  if (!key || !status) return;
+  const previous = map.get(key);
+  if (!previous || ACCOUNT_RANK[status] > ACCOUNT_RANK[previous.status]) {
+    map.set(key, { status });
+  }
 }
 
 export function registrationIndexFromContacts(contacts: ContactLike[]): RegistrationIndex {
-  const phones = new Set<string>();
-  const emails = new Set<string>();
+  const phones = new Map<string, AccountMatch>();
+  const emails = new Map<string, AccountMatch>();
   for (const contact of contacts) {
     if (contact.role && contact.role !== 'carrier' && contact.role !== 'independent_operator') {
       continue;
     }
-    addPhone(phones, contact.phone);
-    addPhone(phones, contact.phoneDigits);
-    contact.whatsappNumbers?.forEach((number) => addPhone(phones, number));
-    addEmail(emails, contact.email);
-    contact.notificationEmails?.forEach((email) => addEmail(emails, email));
+    const status = asAccountStatus(contact.status);
+    if (!status) continue;
+    const phoneKeys = [contact.phone, contact.phoneDigits, ...(contact.whatsappNumbers ?? [])];
+    for (const value of phoneKeys) {
+      if (typeof value === 'string') remember(phones, directoryPhone(value), status);
+    }
+    const emailKeys = [contact.email, ...(contact.notificationEmails ?? [])];
+    for (const value of emailKeys) {
+      if (typeof value !== 'string') continue;
+      const email = value.trim().toLowerCase();
+      if (email.includes('@')) remember(emails, email, status);
+    }
   }
   return { phones, emails };
 }
 
+function lookupAccount(record: CarrierDirectoryRecord, index: RegistrationIndex): AccountMatch | null {
+  const phone = directoryPhone(record.phone || record.id);
+  const email = record.email.trim().toLowerCase();
+  if (phone && index.phones.has(phone)) return index.phones.get(phone) ?? null;
+  if (email.includes('@') && index.emails.has(email)) return index.emails.get(email) ?? null;
+  return null;
+}
+
+export function followUpFor(record: Pick<CarrierDirectoryRecord, 'status'>, match: AccountMatch | null): FollowUp {
+  if (match?.status === 'approved') return 'ready';
+  if (match) return 'issue';
+  if (record.status === 'registered') return 'issue';
+  if (record.status === 'failed') return 'failed';
+  if (record.status === 'sent') return 'waiting';
+  return 'unsent';
+}
+
+export function followUpCopy(record: CarrierDirectoryRecord): { label: string; detail: string; tone: string } {
+  if (record.followUp === 'ready') {
+    return {
+      label: 'Registro listo',
+      detail: 'Ya puede operar. No hace falta insistir.',
+      tone: 'text-success',
+    };
+  }
+  if (record.followUp === 'issue') {
+    if (record.accountStatus === 'pending_approval') {
+      return {
+        label: 'Falta aprobación',
+        detail: 'Ya se registró, pero su cuenta sigue pendiente. Confírmale que terminó y revisa la aprobación.',
+        tone: 'text-orange',
+      };
+    }
+    if (record.accountStatus === 'rejected') {
+      return {
+        label: 'Registro rechazado',
+        detail: 'Se registró, pero la cuenta fue rechazada. Hay que resolverlo antes de que opere.',
+        tone: 'text-danger',
+      };
+    }
+    if (record.accountStatus === 'suspended') {
+      return {
+        label: 'Cuenta suspendida',
+        detail: 'Se registró, pero la cuenta está suspendida.',
+        tone: 'text-danger',
+      };
+    }
+    return {
+      label: 'Sin cuenta',
+      detail: 'Figura como registrado, pero no hay una cuenta con este teléfono o correo.',
+      tone: 'text-orange',
+    };
+  }
+  if (record.followUp === 'failed') {
+    return {
+      label: 'No llegó',
+      detail: 'La invitación no se pudo enviar. Envíala de nuevo.',
+      tone: 'text-danger',
+    };
+  }
+  if (record.followUp === 'waiting') {
+    return {
+      label: 'Invitación enviada',
+      detail: 'Aún no se registra. Dale seguimiento para que termine.',
+      tone: 'text-orange',
+    };
+  }
+  return {
+    label: 'Sin enviar',
+    detail: 'La invitación la envías tú, para poder darle seguimiento al registro.',
+    tone: 'text-muted',
+  };
+}
+
 export function withRegistration(
   records: CarrierDirectoryRecord[],
-  index: RegistrationIndex,
+  users: RegistrationIndex,
+  companies: RegistrationIndex = { phones: new Map(), emails: new Map() },
 ): CarrierDirectoryRecord[] {
   return records.map((record) => {
-    const phone = directoryPhone(record.phone || record.id);
-    const email = record.email.trim().toLowerCase();
-    const registered =
-      record.registered ||
-      record.status === 'registered' ||
-      (phone.length === 10 && index.phones.has(phone)) ||
-      Boolean(email.includes('@') && index.emails.has(email));
+    const match = lookupAccount(record, users) ?? lookupAccount(record, companies);
+    const followUp = followUpFor(record, match);
     return {
       ...record,
-      registered,
-      status: registered ? 'registered' : record.status || 'pending_invitation',
+      registered: Boolean(match),
+      accountStatus: match?.status ?? '',
+      followUp,
     };
   });
 }
@@ -215,6 +373,7 @@ export function withRegistration(
 function contactFromDoc(data: DocumentData, role?: string): ContactLike {
   return {
     role,
+    status: typeof data.status === 'string' ? data.status : '',
     phone: typeof data.phone === 'string' ? data.phone : '',
     phoneDigits: typeof data.phoneDigits === 'string' ? data.phoneDigits : '',
     email: typeof data.email === 'string' ? data.email : '',
@@ -223,48 +382,37 @@ function contactFromDoc(data: DocumentData, role?: string): ContactLike {
   };
 }
 
-async function loadRegistrationIndex(): Promise<RegistrationIndex> {
+async function loadRegistrationIndexes(): Promise<{
+  users: RegistrationIndex;
+  companies: RegistrationIndex;
+}> {
   const [usersSnap, companiesSnap] = await Promise.all([
     getDocs(collection(db, 'users')),
     getDocs(collection(db, 'companies')).catch(() => null),
   ]);
-  const contacts: ContactLike[] = usersSnap.docs.map((item) => {
-    const data = item.data();
-    const role = typeof data.role === 'string' ? data.role : undefined;
-    return contactFromDoc(data, role);
-  });
-  companiesSnap?.forEach((item) => {
-    contacts.push(contactFromDoc(item.data()));
-  });
-  return registrationIndexFromContacts(contacts);
-}
-
-async function persistRegistered(ids: string[]) {
-  const now = Timestamp.now();
-  for (let offset = 0; offset < ids.length; offset += 400) {
-    const batch = writeBatch(db);
-    for (const id of ids.slice(offset, offset + 400)) {
-      batch.update(doc(db, 'carrier_preprofiles', id), {
-        status: 'registered',
-        registeredAt: now,
-      });
-    }
-    await batch.commit();
-  }
+  const users = registrationIndexFromContacts(
+    usersSnap.docs.map((item) => {
+      const data = item.data();
+      const role = typeof data.role === 'string' ? data.role : undefined;
+      return contactFromDoc(data, role);
+    }),
+  );
+  const companies = registrationIndexFromContacts(
+    companiesSnap?.docs.map((item) => contactFromDoc(item.data())) ?? [],
+  );
+  return { users, companies };
 }
 
 export async function fetchCarrierDirectory(): Promise<CarrierDirectoryRecord[]> {
-  const [snap, index] = await Promise.all([
+  const [snap, indexes] = await Promise.all([
     getDocs(collection(db, 'carrier_preprofiles')),
-    loadRegistrationIndex(),
+    loadRegistrationIndexes(),
   ]);
   const records: CarrierDirectoryRecord[] = [];
-  const toPersist: string[] = [];
   snap.forEach((item) => {
     const data = item.data();
     const companyName = typeof data.companyName === 'string' ? data.companyName : '';
     if (!companyName) return;
-    const storedStatus = typeof data.status === 'string' ? data.status : 'pending_invitation';
     records.push({
       id: item.id,
       companyName,
@@ -275,19 +423,14 @@ export async function fetchCarrierDirectory(): Promise<CarrierDirectoryRecord[]>
       equipmentTypes: asStringList(data.equipmentTypes),
       coverageZones: asStringList(data.coverageZones),
       handlesLTL: Boolean(data.handlesLTL),
-      status: storedStatus,
-      registered: storedStatus === 'registered',
+      status: typeof data.status === 'string' ? data.status : 'pending_invitation',
+      pricerEmail: typeof data.pricerEmail === 'string' ? data.pricerEmail : '',
+      registered: false,
+      accountStatus: '',
+      followUp: 'unsent',
     });
-    if (storedStatus !== 'registered') toPersist.push(item.id);
   });
-  const marked = withRegistration(records, index);
-  const persistIds = marked.filter((record, i) => record.registered && toPersist.includes(records[i].id));
-  if (persistIds.length) {
-    void persistRegistered(persistIds.map((record) => record.id)).catch(() => {
-      // The screen still shows the match. The next visit can stamp the profile.
-    });
-  }
-  return marked;
+  return withRegistration(records, indexes.users, indexes.companies);
 }
 
 function channelFor(record: CarrierDirectoryRecord, requested: InviteChannel): 'whatsapp' | 'email' | null {
@@ -317,19 +460,22 @@ export async function inviteFromDirectory(
   records: CarrierDirectoryRecord[],
   channel: InviteChannel,
   createdBy: string,
+  pricerEmail?: string,
 ): Promise<{ success: number; failed: number }> {
   const now = Timestamp.now();
   let success = 0;
   let failed = 0;
-  const pending = records.filter((record) => !record.registered && record.status !== 'registered');
+  const pending = records.filter((record) => record.followUp !== 'ready' && record.followUp !== 'issue');
   await mapPool(pending, 8, async (record) => {
     const chosen = channelFor(record, channel);
-    if (!chosen) {
+    const rawName = (record.contactName || record.companyName).trim();
+    const name = rawName.slice(0, 80);
+    if (!chosen || !name) {
       failed += 1;
       return;
     }
     const invite: Record<string, unknown> = {
-      name: record.contactName || record.companyName,
+      name,
       phone: directoryPhone(record.phone) || record.phone,
       channel: chosen,
       status: 'pending',
@@ -338,6 +484,7 @@ export async function inviteFromDirectory(
       preProfilePhone: record.id,
     };
     if (record.email.trim()) invite.email = record.email.trim();
+    if (pricerEmail) invite.pricerEmail = pricerEmail;
     try {
       await setDoc(doc(collection(db, 'invitations')), invite);
       success += 1;
@@ -345,12 +492,17 @@ export async function inviteFromDirectory(
       failed += 1;
       return;
     }
+    const profile: Record<string, unknown> = {
+      status: 'sent',
+      lastInvitedAt: now,
+      inviteChannel: chosen,
+    };
+    if (pricerEmail) {
+      profile.pricerEmail = pricerEmail;
+      profile.invitedBy = createdBy;
+    }
     try {
-      await updateDoc(doc(db, 'carrier_preprofiles', record.id), {
-        status: 'sent',
-        lastInvitedAt: now,
-        inviteChannel: chosen,
-      });
+      await updateDoc(doc(db, 'carrier_preprofiles', record.id), profile);
     } catch {
       // The invitation was created; a missing pre-profile should not undo it.
     }
@@ -364,7 +516,7 @@ export async function saveManualPreProfileAndInvite(
   pricerEmail?: string,
 ): Promise<void> {
   const now = Timestamp.now();
-  const name = input.contactName || input.companyName;
+  const name = (input.contactName || input.companyName).trim().slice(0, 80);
   if (input.phone) {
     const profileRef = doc(db, 'carrier_preprofiles', input.phone);
     const existing = await getDoc(profileRef);
@@ -373,10 +525,6 @@ export async function saveManualPreProfileAndInvite(
     if (previousStatus === 'registered') {
       throw new Error('Este transportista ya completó su registro.');
     }
-    const status =
-      previousStatus === 'sent' || previousStatus === 'failed'
-        ? previousStatus
-        : 'pending_invitation';
     const profile: Record<string, unknown> = {
       companyName: input.companyName,
       contactName: input.contactName,
@@ -393,7 +541,8 @@ export async function saveManualPreProfileAndInvite(
       coverageUSAStates: input.coversUSA ? input.coverageUSAStates : [],
       handlesHazmat: false,
       handlesImpoExpo: false,
-      status,
+      status: 'sent',
+      lastInvitedAt: now,
       importedAt: now,
     };
     if (pricerEmail) profile.pricerEmail = pricerEmail;

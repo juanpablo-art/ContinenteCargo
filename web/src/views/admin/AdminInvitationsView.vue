@@ -102,8 +102,11 @@ async function send() {
           equipmentTypes: input.equipmentTypes,
           coverageZones: input.coverageZones,
           handlesLTL: input.handlesLTL,
-          status: 'pending_invitation',
+          status: 'sent',
+          pricerEmail: auth.currentUser?.role === 'pricer' ? auth.currentUser.email : '',
           registered: false,
+          accountStatus: '',
+          followUp: 'waiting',
         });
       }
     } else {

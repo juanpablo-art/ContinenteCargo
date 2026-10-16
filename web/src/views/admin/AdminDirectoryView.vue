@@ -20,6 +20,7 @@ import {
   directoryPhone,
   fetchCarrierDirectory,
   importCarrierDirectory,
+  followUpCopy,
   inviteFromDirectory,
   registrationIndexFromContacts,
   withRegistration,
@@ -29,33 +30,43 @@ import EmptyState from '@/components/EmptyState.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { toast } from '@/lib/toast';
 
-type Filter = 'missing' | 'all' | 'pending' | 'invited' | 'registered';
+type Filter = 'unsent' | 'follow' | 'ready' | 'all';
 
 const auth = useAuthStore();
 const isAdmin = computed(() => auth.currentUser?.role === 'admin');
 const isDemo = computed(() => auth.currentUser?.email === 'demo@continente.local');
 const inviteRoute = computed(() => (isAdmin.value ? 'admin-invitations' : 'pricer-invitations'));
+const pricerEmail = computed(() =>
+  auth.currentUser?.role === 'pricer' ? auth.currentUser.email : '',
+);
 
 const records = ref<CarrierDirectoryRecord[]>([]);
 const selected = ref<Set<string>>(new Set());
 const search = ref('');
-const filter = ref<Filter>('missing');
+const filter = ref<Filter>('unsent');
 const loading = ref(true);
 const sending = ref(false);
 const importing = ref(false);
 
-const statusOf = (status: string) => {
-  if (status === 'sent') return { label: 'Invitado', cls: 'bg-blue-soft text-blue-ink' };
-  if (status === 'failed') return { label: 'Fallido', cls: 'bg-danger-soft text-danger' };
-  if (status === 'registered') return { label: 'Registrado', cls: 'bg-success-soft text-success' };
-  return { label: 'Pendiente', cls: 'bg-slate-100 text-slate-600' };
-};
+function badgeOf(record: CarrierDirectoryRecord) {
+  const copy = followUpCopy(record);
+  const cls =
+    record.followUp === 'ready'
+      ? 'bg-success-soft text-success'
+      : record.followUp === 'failed'
+        ? 'bg-danger-soft text-danger'
+        : record.followUp === 'issue'
+          ? 'bg-orange-soft text-orange'
+          : record.followUp === 'waiting'
+            ? 'bg-blue-soft text-blue-ink'
+            : 'bg-slate-100 text-slate-600';
+  return { ...copy, cls };
+}
 
 function matchesFilter(record: CarrierDirectoryRecord, id: Filter) {
-  if (id === 'missing') return !record.registered;
-  if (id === 'pending') return !record.registered && record.status === 'pending_invitation';
-  if (id === 'invited') return !record.registered && (record.status === 'sent' || record.status === 'failed');
-  if (id === 'registered') return record.registered;
+  if (id === 'unsent') return record.followUp === 'unsent';
+  if (id === 'follow') return record.followUp === 'waiting' || record.followUp === 'failed' || record.followUp === 'issue';
+  if (id === 'ready') return record.followUp === 'ready';
   return true;
 }
 
@@ -63,18 +74,24 @@ function canReach(record: CarrierDirectoryRecord) {
   return Boolean(directoryPhone(record.phone) || record.email.includes('@'));
 }
 
+function canInvite(record: CarrierDirectoryRecord) {
+  return canReach(record) && (record.followUp === 'unsent' || record.followUp === 'waiting' || record.followUp === 'failed');
+}
+
 const chips = computed(() => {
   const all = records.value;
   return [
-    { id: 'missing' as const, label: 'Sin registro', n: all.filter((r) => matchesFilter(r, 'missing')).length },
-    { id: 'pending' as const, label: 'Pendientes', n: all.filter((r) => matchesFilter(r, 'pending')).length },
-    { id: 'invited' as const, label: 'Invitados', n: all.filter((r) => matchesFilter(r, 'invited')).length },
-    { id: 'registered' as const, label: 'Registrados', n: all.filter((r) => matchesFilter(r, 'registered')).length },
+    { id: 'unsent' as const, label: 'Por enviar', n: all.filter((r) => matchesFilter(r, 'unsent')).length },
+    { id: 'follow' as const, label: 'Seguimiento', n: all.filter((r) => matchesFilter(r, 'follow')).length },
+    { id: 'ready' as const, label: 'Listos', n: all.filter((r) => matchesFilter(r, 'ready')).length },
     { id: 'all' as const, label: 'Todos', n: all.length },
   ];
 });
 
-const missing = computed(() => records.value.filter((r) => !r.registered && canReach(r)));
+const unsent = computed(() => records.value.filter((r) => r.followUp === 'unsent' && canReach(r)));
+const retriable = computed(() =>
+  records.value.filter((r) => (r.followUp === 'waiting' || r.followUp === 'failed') && canReach(r)),
+);
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -92,7 +109,7 @@ const filtered = computed(() => {
     .sort((a, b) => a.companyName.localeCompare(b.companyName, 'es'));
 });
 
-const selectable = computed(() => filtered.value.filter((r) => !r.registered));
+const selectable = computed(() => (isAdmin.value ? [] : filtered.value.filter((r) => canInvite(r))));
 const selectedRecords = computed(() =>
   selectable.value.filter((r) => selected.value.has(r.id)),
 );
@@ -103,7 +120,9 @@ const allFilteredSelected = computed(
 );
 
 function toggle(id: string) {
-  if (records.value.some((r) => r.id === id && r.registered)) return;
+  if (isAdmin.value) return;
+  const row = records.value.find((r) => r.id === id);
+  if (!row || !canInvite(row)) return;
   const next = new Set(selected.value);
   if (next.has(id)) next.delete(id);
   else next.add(id);
@@ -124,13 +143,21 @@ function decorate(rows: CarrierDirectoryRecord[]) {
   );
 }
 
+function ownedByCurrentPricer(rows: CarrierDirectoryRecord[]) {
+  if (isAdmin.value) return rows;
+  const email = (auth.currentUser?.email ?? '').trim().toLowerCase();
+  return rows.filter((row) => {
+    const owner = row.pricerEmail.trim().toLowerCase();
+    return !owner || owner === email;
+  });
+}
+
 async function load() {
   loading.value = true;
   try {
-    records.value = isDemo.value
-      ? decorate(demoDirectoryRecords())
-      : await fetchCarrierDirectory();
-    const live = new Set(records.value.filter((r) => !r.registered).map((r) => r.id));
+    const rows = isDemo.value ? decorate(demoDirectoryRecords()) : await fetchCarrierDirectory();
+    records.value = ownedByCurrentPricer(rows);
+    const live = new Set(records.value.filter((r) => canInvite(r)).map((r) => r.id));
     if ([...selected.value].some((id) => !live.has(id))) {
       selected.value = new Set([...selected.value].filter((id) => live.has(id)));
     }
@@ -167,7 +194,9 @@ function markDemoSent(targets: CarrierDirectoryRecord[]) {
   const live = demoDirectoryRecords();
   for (const target of targets) {
     const row = live.find((r) => r.id === target.id);
-    if (row && !row.registered && row.status !== 'registered') row.status = 'sent';
+    if (!row || row.followUp === 'ready' || row.followUp === 'issue') continue;
+    row.status = 'sent';
+    if (pricerEmail.value) row.pricerEmail = pricerEmail.value;
   }
 }
 
@@ -184,14 +213,21 @@ async function deliver(
     if (isDemo.value) {
       markDemoSent(targets);
     } else {
-      const result = await inviteFromDirectory(targets, channel, auth.currentUser?.uuid ?? '');
+      const result = await inviteFromDirectory(
+        targets,
+        channel,
+        auth.currentUser?.uuid ?? '',
+        pricerEmail.value || undefined,
+      );
       success = result.success;
       failed = result.failed;
     }
     const noun = success === 1 ? 'invitación' : 'invitaciones';
     toast.success(
       `${success} ${noun} por ${label}`,
-      failed ? `${failed} fallaron. Revisa los datos.` : 'Quien ya se registró no entra en el envío.',
+      failed
+        ? `${failed} fallaron. Revisa teléfono o correo.`
+        : 'Quedan en Seguimiento hasta que el registro quede listo.',
     );
     selected.value = new Set();
     await load();
@@ -208,12 +244,20 @@ function send(channel: 'whatsapp' | 'email') {
   return deliver(targets, channel, label);
 }
 
-function inviteMissing() {
-  const whatsapp = missing.value.filter((r) => directoryPhone(r.phone)).length;
-  const email = missing.value.length - whatsapp;
+function inviteQueue(targets: CarrierDirectoryRecord[]) {
+  const whatsapp = targets.filter((r) => directoryPhone(r.phone)).length;
+  const email = targets.length - whatsapp;
   const label =
     email && whatsapp ? `WhatsApp (${whatsapp}) y correo (${email})` : whatsapp ? 'WhatsApp' : 'correo';
-  return deliver(missing.value, 'auto', label);
+  return deliver(targets, 'auto', label);
+}
+
+function inviteUnsent() {
+  return inviteQueue(unsent.value);
+}
+
+function resendWaiting() {
+  return inviteQueue(retriable.value);
 }
 
 onMounted(load);
@@ -223,7 +267,11 @@ onMounted(load);
   <div class="cc-page" :class="selected.size ? 'pb-28' : ''">
     <PageHeader
       :title="`Directorio${records.length ? ` (${records.length})` : ''}`"
-      subtitle="Invita de una vez a quienes faltan y revisa quién ya se registró"
+      :subtitle="
+        isAdmin
+          ? 'Los pricers envían las invitaciones y revisan que cada registro quede bien'
+          : 'Tú envías las invitaciones y das seguimiento hasta que el registro quede listo'
+      "
       :back="isAdmin ? { name: 'admin-carriers' } : undefined"
       back-label="Transportistas"
     >
@@ -242,7 +290,7 @@ onMounted(load);
           <Download class="size-4" aria-hidden="true" />
           {{ importing ? 'Importando…' : 'Actualizar' }}
         </button>
-        <RouterLink :to="{ name: inviteRoute }" class="cc-btn w-auto px-4">
+        <RouterLink v-if="!isAdmin" :to="{ name: inviteRoute }" class="cc-btn w-auto px-4">
           <UserPlus class="size-4" aria-hidden="true" />
           Invitación manual
         </RouterLink>
@@ -264,8 +312,8 @@ onMounted(load);
         title="Directorio vacío"
         :subtitle="
           isAdmin
-            ? 'Importa el directorio de transportistas para comenzar a enviar invitaciones.'
-            : 'Cuando haya preperfiles, podrás invitarlos por WhatsApp o correo.'
+            ? 'Importa el directorio. Los pricers envían cada invitación y dan seguimiento al registro.'
+            : 'Cuando haya transportistas, envíales la invitación y revisa que se registren bien.'
         "
       >
         <template #icon><UserPlus /></template>
@@ -290,25 +338,51 @@ onMounted(load);
       <section class="mb-4 flex flex-col gap-3 rounded-2xl border border-line bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between">
         <div class="min-w-0">
           <p class="text-sm font-semibold text-navy">
-            {{ missing.length ? `${missing.length} sin registro` : 'Todos registrados' }}
+            {{
+              unsent.length
+                ? `${unsent.length} sin invitación`
+                : retriable.length
+                  ? `${retriable.length} esperando registro`
+                  : 'Registros al día'
+            }}
           </p>
           <p class="mt-0.5 text-xs text-muted">
             {{
-              missing.length
-                ? 'Un envío por WhatsApp, o por correo si no hay teléfono. Quien ya tiene cuenta no recibe otro mensaje.'
-                : 'Nadie del directorio está pendiente de registro.'
+              isAdmin
+                ? 'Desde aquí ves el avance. El envío y el seguimiento los hace cada pricer.'
+                : unsent.length
+                  ? 'Envíalas tú. Después, en Seguimiento, ves quién no se registró o quién quedó con un problema.'
+                  : retriable.length
+                    ? 'La invitación ya salió. Si no se registran, reenvíala y revisa que la cuenta quede aprobada.'
+                    : 'Quien ya se registró está en Listos. Si alguno tiene un problema, aparece en Seguimiento.'
             }}
           </p>
         </div>
         <button
-          v-if="missing.length"
+          v-if="!isAdmin && unsent.length"
           type="button"
           class="cc-btn h-11 w-full shrink-0 px-4 sm:w-auto"
           :disabled="sending"
-          @click="inviteMissing"
+          @click="inviteUnsent"
         >
           <Send class="size-4" aria-hidden="true" />
-          {{ sending ? 'Enviando…' : `Invitar a los ${missing.length} que faltan` }}
+          {{
+            sending
+              ? 'Enviando…'
+              : unsent.length === 1
+                ? 'Enviar 1 invitación'
+                : `Enviar ${unsent.length} invitaciones`
+          }}
+        </button>
+        <button
+          v-else-if="!isAdmin && retriable.length"
+          type="button"
+          class="cc-btn-secondary h-11 w-full shrink-0 px-4 sm:w-auto"
+          :disabled="sending"
+          @click="resendWaiting"
+        >
+          <Send class="size-4" aria-hidden="true" />
+          {{ sending ? 'Enviando…' : `Reenviar a ${retriable.length}` }}
         </button>
       </section>
 
@@ -359,43 +433,43 @@ onMounted(load);
       <ul v-else class="grid gap-2.5">
         <li v-for="record in filtered" :key="record.id">
           <component
-            :is="record.registered ? 'div' : 'button'"
-            :type="record.registered ? undefined : 'button'"
+            :is="canInvite(record) && !isAdmin ? 'button' : 'div'"
+            :type="canInvite(record) && !isAdmin ? 'button' : undefined"
             class="flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left"
             :class="
-              record.registered
+              !canInvite(record) || isAdmin
                 ? 'border-transparent bg-card shadow-card'
                 : selected.has(record.id)
                   ? 'border-brand/30 bg-blue-soft/50 transition'
                   : 'border-transparent bg-card shadow-card transition hover:shadow-card-hover'
             "
-            @click="record.registered ? undefined : toggle(record.id)"
+            @click="canInvite(record) && !isAdmin ? toggle(record.id) : undefined"
           >
             <span
+              v-if="!isAdmin"
               class="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border"
               :class="
-                record.registered
+                record.followUp === 'ready'
                   ? 'border-success/30 bg-success-soft text-success'
-                  : selected.has(record.id)
-                    ? 'border-brand bg-brand text-white'
-                    : 'border-line bg-card text-transparent'
+                  : !canInvite(record)
+                    ? 'border-orange/30 bg-orange-soft text-orange'
+                    : selected.has(record.id)
+                      ? 'border-brand bg-brand text-white'
+                      : 'border-line bg-card text-transparent'
               "
             >
-              <UserCheck v-if="record.registered" class="size-3.5" aria-hidden="true" />
+              <UserCheck v-if="!canInvite(record)" class="size-3.5" aria-hidden="true" />
               <Check v-else class="size-3.5" aria-hidden="true" />
             </span>
             <span class="min-w-0 flex-1">
               <span class="flex items-start justify-between gap-3">
                 <span class="truncate text-sm font-semibold text-navy">{{ record.companyName }}</span>
-                <span class="cc-badge shrink-0" :class="statusOf(record.status).cls">
-                  {{ statusOf(record.status).label }}
+                <span class="cc-badge shrink-0" :class="badgeOf(record).cls">
+                  {{ badgeOf(record).label }}
                 </span>
               </span>
-              <span
-                class="mt-1 block text-xs font-medium"
-                :class="record.registered ? 'text-success' : 'text-orange'"
-              >
-                {{ record.registered ? 'Ya completó su registro' : 'Aún no se registra — conviene insistir' }}
+              <span class="mt-1 block text-xs font-medium" :class="badgeOf(record).tone">
+                {{ badgeOf(record).detail }}
               </span>
               <span v-if="record.contactName" class="mt-0.5 block truncate text-xs text-muted">
                 {{ record.contactName }}
@@ -431,7 +505,7 @@ onMounted(load);
 
     <Teleport to="body">
     <div
-      v-if="selected.size"
+      v-if="!isAdmin && selected.size"
       class="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 border-t border-line bg-card/95 px-4 py-3 shadow-elevated backdrop-blur md:bottom-0 md:left-[248px]"
     >
       <div class="mx-auto flex max-w-6xl items-center gap-3">
