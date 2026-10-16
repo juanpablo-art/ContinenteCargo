@@ -9,10 +9,12 @@ export interface CarrierPreProfile {
   email: string;
   equipmentTypes: string[];
   coverageZones: string[];
+  coverageStates: string[];
   handlesLTL: boolean;
   handlesLocal: boolean;
   handlesIntraState?: boolean;
   coversUSA?: boolean;
+  coverageUSAStates: string[];
 }
 
 const EMAIL_PATTERN = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
@@ -57,11 +59,17 @@ export async function lookupCarrierPreProfile(phone: string): Promise<CarrierPre
       coverageZones: Array.isArray(data.coverageZones)
         ? data.coverageZones.filter((item): item is string => typeof item === 'string')
         : [],
+      coverageStates: Array.isArray(data.coverageStates)
+        ? data.coverageStates.filter((item): item is string => typeof item === 'string')
+        : [],
       handlesLTL: Boolean(data.handlesLTL),
       handlesLocal: Boolean(data.handlesLocal),
       handlesIntraState:
         typeof data.handlesIntraState === 'boolean' ? data.handlesIntraState : undefined,
       coversUSA: typeof data.coversUSA === 'boolean' ? data.coversUSA : undefined,
+      coverageUSAStates: Array.isArray(data.coverageUSAStates)
+        ? data.coverageUSAStates.filter((item): item is string => typeof item === 'string')
+        : [],
     };
   } catch {
     return null;

@@ -144,11 +144,19 @@ function applyPreProfile(profile: CarrierPreProfile) {
   }
   if (typeof profile.coversUSA === 'boolean') coversUSA.value = profile.coversUSA;
 
-  const states = profile.coverageZones.flatMap((zoneId) => {
-    const zone = MEXICAN_ZONES.find((item) => item.id === zoneId);
-    return zone ? [...zone.states] : [];
-  });
+  const exactStates = profile.coverageStates.filter((state) =>
+    MEXICAN_ZONES.some((zone) => (zone.states as readonly string[]).includes(state)),
+  );
+  const states = exactStates.length
+    ? exactStates
+    : profile.coverageZones.flatMap((zoneId) => {
+        const zone = MEXICAN_ZONES.find((item) => item.id === zoneId);
+        return zone ? [...zone.states] : [];
+      });
   if (states.length) selectedStates.value = new Set(states);
+  if (profile.coverageUSAStates.length) {
+    coverageUSAStates.value = new Set(profile.coverageUSAStates);
+  }
 
   const equipment = profile.equipmentTypes.filter(isEquipment);
   if (equipment.length) coverageEquipment.value = new Set(equipment);

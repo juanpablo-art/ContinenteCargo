@@ -30,10 +30,13 @@ export interface ManualInviteInput {
   baseCity: string;
   equipmentTypes: string[];
   coverageZones: string[];
+  /** Exact Mexican states kept after the admin removes some from a zone. */
+  coverageStates: string[];
   handlesLTL: boolean;
   handlesLocal: boolean;
   handlesIntraState: boolean;
   coversUSA: boolean;
+  coverageUSAStates: string[];
 }
 
 const demoDirectory: CarrierDirectoryRecord[] = [
@@ -192,10 +195,12 @@ export async function saveManualPreProfileAndInvite(
         baseCity: input.baseCity,
         equipmentTypes: input.equipmentTypes,
         coverageZones: input.coverageZones,
+        coverageStates: input.coverageStates,
         handlesLTL: input.handlesLTL,
         handlesLocal: input.handlesLocal,
         handlesIntraState: input.handlesIntraState,
         coversUSA: input.coversUSA,
+        coverageUSAStates: input.coversUSA ? input.coverageUSAStates : [],
         handlesHazmat: false,
         handlesImpoExpo: false,
         status: 'pending_invitation',

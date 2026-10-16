@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Mail, MessageCircle, Send } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
@@ -10,6 +10,10 @@ import {
 import { EQUIPMENT_TYPES, MEXICAN_ZONES, phoneDigits } from '@/lib/models';
 import PageHeader from '@/components/PageHeader.vue';
 import ResultState from '@/components/ResultState.vue';
+import FormSwitch from '@/components/FormSwitch.vue';
+import MexicoZoneMap from '@/components/MexicoZoneMap.vue';
+import USAZoneGrid from '@/components/USAZoneGrid.vue';
+import { USA_MAP_ZONES } from '@/lib/zone-maps';
 import { toast } from '@/lib/toast';
 
 const auth = useAuthStore();
@@ -31,8 +35,19 @@ const form = reactive({
   handlesIntraState: false,
   coversUSA: false,
   equipment: [] as string[],
-  zones: [] as string[],
 });
+
+const selectedStates = ref<Set<string>>(new Set());
+const usaStates = ref<Set<string>>(new Set());
+
+watch(
+  () => form.coversUSA,
+  (on) => {
+    if (on && usaStates.value.size === 0) {
+      usaStates.value = new Set(USA_MAP_ZONES.flatMap((zone) => [...zone.states]));
+    }
+  },
+);
 
 const digits = computed(() => phoneDigits(form.phone));
 const hasPhone = computed(() => digits.value.length === 10);
@@ -41,6 +56,12 @@ const basicValid = computed(
   () => (form.contactName.trim() || form.companyName.trim()) && (hasPhone.value || hasEmail.value),
 );
 const displayName = computed(() => form.companyName.trim() || form.contactName.trim());
+
+function zonesFromStates(states: Set<string>): string[] {
+  return MEXICAN_ZONES.filter((zone) => zone.states.some((state) => states.has(state))).map(
+    (zone) => zone.id,
+  );
+}
 
 function toggle(list: string[], value: string) {
   const idx = list.indexOf(value);
@@ -58,11 +79,13 @@ async function send() {
       email: form.email.trim().toLowerCase(),
       baseCity: form.baseCity.trim(),
       equipmentTypes: [...form.equipment],
-      coverageZones: [...form.zones],
+      coverageZones: zonesFromStates(selectedStates.value),
+      coverageStates: [...selectedStates.value],
       handlesLTL: form.handlesLTL,
       handlesLocal: form.handlesLocal,
       handlesIntraState: form.handlesIntraState,
       coversUSA: form.coversUSA,
+      coverageUSAStates: form.coversUSA ? [...usaStates.value] : [],
     };
     if (isDemo.value) {
       if (input.phone) {
@@ -195,23 +218,18 @@ async function send() {
           </button>
         </div>
         <h2 class="cc-h2">Zonas de cobertura</h2>
-        <div class="flex flex-wrap gap-1.5">
-          <button
-            v-for="zone in MEXICAN_ZONES"
-            :key="zone.id"
-            type="button"
-            class="cc-chip"
-            :class="form.zones.includes(zone.id) && 'cc-chip-active'"
-            @click="toggle(form.zones, zone.id)"
-          >
-            {{ zone.id }}
-          </button>
-        </div>
-        <label class="flex items-center gap-3 text-sm font-medium text-navy">
-          <input v-model="form.coversUSA" type="checkbox" class="size-4" />
-          También cubre Estados Unidos
-        </label>
-        <p v-if="!form.equipment.length && !form.zones.length" class="text-xs text-muted">
+        <p class="text-xs text-muted">
+          Toca una zona para agregar todos sus estados. Quita los que este transportista no cubra.
+        </p>
+        <MexicoZoneMap v-model="selectedStates" />
+        <FormSwitch
+          v-model="form.coversUSA"
+          title="También cubre Estados Unidos"
+          hint="Activa para ver las zonas y quitar los estados que no cubre."
+          label="También cubre Estados Unidos"
+        />
+        <USAZoneGrid v-if="form.coversUSA" v-model="usaStates" />
+        <p v-if="!form.equipment.length && !selectedStates.size" class="text-xs text-muted">
           Puedes enviar sin cobertura. El transportista la completará al registrarse.
         </p>
         <div class="flex gap-2">
