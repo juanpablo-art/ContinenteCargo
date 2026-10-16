@@ -122,7 +122,7 @@
 
   /* ---------- Forms ---------- */
   .cc-field {
-    @apply w-full rounded-xl border border-input bg-card px-3.5 py-2.5 text-[15px] text-ink shadow-[inset_0_1px_1px_rgb(16_36_58/0.03)] outline-none transition duration-150 placeholder:text-muted/60 hover:border-[rgb(190_202_220)] focus:border-blue focus:ring-4 focus:ring-blue/10 disabled:cursor-not-allowed disabled:bg-background disabled:text-muted;
+    @apply w-full rounded-xl border border-input bg-card px-3.5 py-2.5 text-base text-ink shadow-[inset_0_1px_1px_rgb(16_36_58/0.03)] outline-none transition duration-150 placeholder:text-muted/60 hover:border-[rgb(190_202_220)] focus:border-blue focus:ring-4 focus:ring-blue/10 disabled:cursor-not-allowed disabled:bg-background disabled:text-muted;
     min-height: 2.75rem;
   }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
   ArrowDown,
   BadgeDollarSign,
@@ -117,6 +117,67 @@ const summary = computed(() => {
   return { route: `${o} → ${d}`, price };
 });
 
+const missingFields = computed(() => {
+  const items: string[] = [];
+  if (!originCity.value.trim()) items.push('origen');
+  if (!destinationCity.value.trim()) items.push('destino');
+  if (isLTL.value) {
+    if (!weightText.value) items.push('peso');
+    if (!measurementsDesc.value.trim()) items.push('medidas');
+  } else if (!priceText.value) {
+    items.push('precio');
+  }
+  return items;
+});
+
+const isDesktopBar = ref(false);
+const keyboardInset = ref(0);
+
+function syncPublishBar() {
+  isDesktopBar.value = window.matchMedia('(min-width: 768px)').matches;
+  const viewport = window.visualViewport;
+  const active = document.activeElement;
+  const editing =
+    active instanceof HTMLInputElement ||
+    active instanceof HTMLTextAreaElement ||
+    active instanceof HTMLSelectElement;
+  if (!viewport || isDesktopBar.value || !editing) {
+    keyboardInset.value = 0;
+    return;
+  }
+  const covered = window.innerHeight - viewport.height - viewport.offsetTop;
+  keyboardInset.value = covered > 120 ? covered : 0;
+}
+
+const publishBarStyle = computed(() => {
+  if (isDesktopBar.value) return { left: '248px', right: '0px', bottom: '0px' };
+  if (keyboardInset.value > 0) {
+    return { left: '0px', right: '0px', bottom: `${keyboardInset.value}px` };
+  }
+  return {
+    left: '0px',
+    right: '0px',
+    bottom: 'calc(4.5rem + env(safe-area-inset-bottom))',
+  };
+});
+
+onMounted(() => {
+  syncPublishBar();
+  window.addEventListener('resize', syncPublishBar);
+  window.addEventListener('focusin', syncPublishBar);
+  window.addEventListener('focusout', syncPublishBar);
+  window.visualViewport?.addEventListener('resize', syncPublishBar);
+  window.visualViewport?.addEventListener('scroll', syncPublishBar);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', syncPublishBar);
+  window.removeEventListener('focusin', syncPublishBar);
+  window.removeEventListener('focusout', syncPublishBar);
+  window.visualViewport?.removeEventListener('resize', syncPublishBar);
+  window.visualViewport?.removeEventListener('scroll', syncPublishBar);
+});
+
 function toggleReq(req: SpecialRequirement) {
   const i = selectedRequirements.value.indexOf(req);
   if (i >= 0) selectedRequirements.value.splice(i, 1);
@@ -124,7 +185,14 @@ function toggleReq(req: SpecialRequirement) {
 }
 
 async function publish() {
-  if (!isValid.value || !auth.currentUser) return;
+  if (!isValid.value || !auth.currentUser || saving.value) return;
+  const pickup = fromDatetimeLocalValue(pickupDate.value);
+  const delivery = fromDatetimeLocalValue(deliveryDate.value);
+  const closeAt = fromDatetimeLocalValue(deadline.value);
+  if ([pickup, delivery, closeAt].some((date) => Number.isNaN(date.getTime()))) {
+    error.value = 'Revisa las fechas de recolección, entrega y cierre.';
+    return;
+  }
   saving.value = true;
   error.value = '';
   try {
@@ -141,8 +209,8 @@ async function publish() {
       originState: originState.value,
       destinationCity: destinationCity.value.trim(),
       destinationState: destinationState.value,
-      pickupDate: fromDatetimeLocalValue(pickupDate.value),
-      deliveryDate: fromDatetimeLocalValue(deliveryDate.value),
+      pickupDate: pickup,
+      deliveryDate: delivery,
       equipmentType: equipmentType.value,
       unitCount: Math.max(1, Number(unitCount.value) || 1),
       weightKg: Number(weightText.value) || 0,
@@ -156,7 +224,7 @@ async function publish() {
       includedConcepts: includedConcepts.value.trim(),
       allowedExtraExpenses: allowedExtras.value.trim(),
       assignmentMode: assignmentMode.value,
-      deadline: fromDatetimeLocalValue(deadline.value),
+      deadline: closeAt,
       minBidDecrement: Number(minDecrementText.value) || 100,
       observations: observations.value.trim(),
       status: 'Publicado',
@@ -231,7 +299,7 @@ async function publish() {
         {{ error }}
       </p>
 
-      <form id="publish-form" class="space-y-4 pb-24" @submit.prevent="publish">
+      <form id="publish-form" class="space-y-4 pb-36 md:pb-28" @submit.prevent="publish">
         <!-- 1. Modality -->
         <section class="cc-card p-5">
           <h2 class="cc-h2 mb-1 flex items-center gap-2.5">
@@ -485,22 +553,34 @@ async function publish() {
         </section>
       </form>
 
-      <div
-        class="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 border-t border-line bg-card/95 backdrop-blur-xl md:bottom-0 md:left-[248px]"
-      >
-        <div class="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3 sm:px-6">
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-semibold text-navy">{{ summary.route }}</p>
-            <p class="truncate text-xs text-muted">
-              {{ assignmentMode }} · {{ equipmentType }}
-              <template v-if="summary.price"> · {{ summary.price }}</template>
-            </p>
+      <Teleport to="body">
+        <div
+          class="fixed z-40 border-t border-line bg-card/95 backdrop-blur-xl"
+          :style="publishBarStyle"
+        >
+          <div class="mx-auto flex max-w-3xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold text-navy">{{ summary.route }}</p>
+              <p v-if="error" class="text-xs font-medium text-danger">{{ error }}</p>
+              <p v-else-if="missingFields.length" class="text-xs text-muted">
+                Falta {{ missingFields.join(', ') }} para publicar
+              </p>
+              <p v-else class="truncate text-xs text-muted">
+                {{ assignmentMode }} · {{ equipmentType }}
+                <template v-if="summary.price"> · {{ summary.price }}</template>
+              </p>
+            </div>
+            <button
+              type="button"
+              class="cc-btn w-full shrink-0 sm:w-auto sm:px-6"
+              :disabled="!isValid || saving"
+              @click="publish"
+            >
+              {{ saving ? 'Publicando…' : 'Publicar carga' }}
+            </button>
           </div>
-          <button type="submit" form="publish-form" class="cc-btn w-auto shrink-0 px-6" :disabled="!isValid || saving">
-            {{ saving ? 'Publicando…' : 'Publicar carga' }}
-          </button>
         </div>
-      </div>
+      </Teleport>
     </template>
   </div>
 </template>

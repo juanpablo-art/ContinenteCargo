@@ -39,11 +39,24 @@ export function formatMoney(amount: number, currency: Currency = 'MXN') {
 
 export function toDatetimeLocalValue(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/** Parse a datetime-local value as local time. `new Date(string)` rejects this format on iOS Safari. */
 export function fromDatetimeLocalValue(value: string): Date {
-  return new Date(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(value.trim());
+  if (!match) return new Date(NaN);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6] ?? 0);
+  const date = new Date(year, month - 1, day, hour, minute, second);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    return new Date(NaN);
+  }
+  return date;
 }
 
 export function statusBadgeClass(status: string): string {
