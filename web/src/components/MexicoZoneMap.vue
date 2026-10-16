@@ -47,10 +47,12 @@ function removeState(state: string) {
         <polygon
           :points="polygonPoints(zone.polygon, width, height)"
           :fill="zoneLevel(zone.states, selected) === 'none' ? '#333333' : zone.color"
-          :fill-opacity="zoneLevel(zone.states, selected) === 'partial' ? 0.65 : 1"
-          :stroke="zoneLevel(zone.states, selected) === 'none' ? 'rgba(255,255,255,0.22)' : '#ffffff'"
-          :stroke-width="zoneLevel(zone.states, selected) === 'full' ? 1.6 : zoneLevel(zone.states, selected) === 'partial' ? 1.15 : 0.6"
-          class="cursor-pointer"
+          :fill-opacity="zoneLevel(zone.states, selected) === 'partial' ? 0.72 : 1"
+          :stroke="zoneLevel(zone.states, selected) === 'none' ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.9)'"
+          vector-effect="non-scaling-stroke"
+          :stroke-width="zoneLevel(zone.states, selected) === 'none' ? 1 : 1.25"
+          stroke-linejoin="round"
+          class="zone-shape cursor-pointer"
           role="button"
           tabindex="0"
           :aria-label="`Zona ${zone.id}`"
@@ -114,3 +116,12 @@ function removeState(state: string) {
     </div>
   </section>
 </template>
+
+<style scoped>
+.zone-shape,
+.zone-shape:focus,
+.zone-shape:focus-visible {
+  outline: none;
+  outline-offset: 0;
+}
+</style>

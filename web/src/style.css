@@ -78,6 +78,12 @@
     outline: 2px solid rgb(var(--brand) / 0.55);
     outline-offset: 2px;
   }
+
+  /* SVG shapes use their own stroke. A rectangular outline becomes a stray bar across the map. */
+  svg :focus,
+  svg :focus-visible {
+    outline: none;
+  }
 }
 
 @layer components {
