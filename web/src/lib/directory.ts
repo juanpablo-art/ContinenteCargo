@@ -26,6 +26,9 @@ export interface CarrierDirectoryRecord {
   equipmentTypes: string[];
   coverageZones: string[];
   handlesLTL: boolean;
+  handlesLocal?: boolean;
+  handlesIntraState?: boolean;
+  coversUSA?: boolean;
   /** Invitation state on the preprofile: pending_invitation, sent, failed, registered. */
   status: string;
   /** Pricer who sent the invitation and owns the follow-up. Empty until they send it. */
@@ -431,6 +434,125 @@ export async function fetchCarrierDirectory(): Promise<CarrierDirectoryRecord[]>
     });
   });
   return withRegistration(records, indexes.users, indexes.companies);
+}
+
+export interface CarrierProfileDraft {
+  companyName: string;
+  contactName: string;
+  email: string;
+  baseCity: string;
+  equipmentTypes: string[];
+  coverageZones: string[];
+  handlesLTL: boolean;
+  handlesLocal: boolean;
+  handlesIntraState: boolean;
+  coversUSA: boolean;
+}
+
+export interface CarrierProfile extends CarrierProfileDraft {
+  id: string;
+  phone: string;
+  status: string;
+  pricerEmail: string;
+}
+
+function profileFromRecord(record: CarrierDirectoryRecord): CarrierProfile {
+  return {
+    id: record.id,
+    companyName: record.companyName,
+    contactName: record.contactName,
+    phone: record.phone,
+    email: record.email,
+    baseCity: record.baseCity,
+    equipmentTypes: [...record.equipmentTypes],
+    coverageZones: [...record.coverageZones],
+    handlesLTL: record.handlesLTL,
+    handlesLocal: Boolean(record.handlesLocal),
+    handlesIntraState: Boolean(record.handlesIntraState),
+    coversUSA: Boolean(record.coversUSA),
+    status: record.status,
+    pricerEmail: record.pricerEmail,
+  };
+}
+
+function profileFromData(id: string, data: DocumentData): CarrierProfile | null {
+  const companyName = typeof data.companyName === 'string' ? data.companyName : '';
+  if (!companyName) return null;
+  return {
+    id,
+    companyName,
+    contactName: typeof data.contactName === 'string' ? data.contactName : '',
+    phone: typeof data.phone === 'string' && data.phone ? data.phone : id,
+    email: typeof data.email === 'string' ? data.email : '',
+    baseCity: typeof data.baseCity === 'string' ? data.baseCity : '',
+    equipmentTypes: asStringList(data.equipmentTypes),
+    coverageZones: asStringList(data.coverageZones),
+    handlesLTL: Boolean(data.handlesLTL),
+    handlesLocal: Boolean(data.handlesLocal),
+    handlesIntraState: Boolean(data.handlesIntraState),
+    coversUSA: Boolean(data.coversUSA),
+    status: typeof data.status === 'string' ? data.status : 'pending_invitation',
+    pricerEmail: typeof data.pricerEmail === 'string' ? data.pricerEmail : '',
+  };
+}
+
+export function carrierProfileError(input: CarrierProfileDraft): string | null {
+  const company = input.companyName.trim();
+  const contact = input.contactName.trim();
+  const email = input.email.trim();
+  const city = input.baseCity.trim();
+  if (!company || company.length > 120) return 'Escribe el nombre de la empresa (máximo 120 caracteres).';
+  if (contact.length > 80) return 'El nombre del contacto no puede pasar de 80 caracteres.';
+  if (email && (!email.includes('@') || email.length > 120)) {
+    return 'Escribe un correo válido o déjalo vacío.';
+  }
+  if (city.length > 80) return 'La ciudad no puede pasar de 80 caracteres.';
+  return null;
+}
+
+export function demoCarrierProfile(id: string): CarrierProfile | null {
+  const row = demoDirectoryRecords().find((record) => record.id === id);
+  return row ? profileFromRecord(row) : null;
+}
+
+export function saveDemoCarrierProfile(id: string, input: CarrierProfileDraft): void {
+  const row = demoDirectoryRecords().find((record) => record.id === id);
+  if (!row) throw new Error('No se encontró el transportista.');
+  const error = carrierProfileError(input);
+  if (error) throw new Error(error);
+  row.companyName = input.companyName.trim();
+  row.contactName = input.contactName.trim();
+  row.email = input.email.trim();
+  row.baseCity = input.baseCity.trim();
+  row.equipmentTypes = [...input.equipmentTypes];
+  row.coverageZones = [...input.coverageZones];
+  row.handlesLTL = input.handlesLTL;
+  row.handlesLocal = input.handlesLocal;
+  row.handlesIntraState = input.handlesIntraState;
+  row.coversUSA = input.coversUSA;
+}
+
+export async function fetchCarrierProfile(id: string): Promise<CarrierProfile | null> {
+  const snap = await getDoc(doc(db, 'carrier_preprofiles', id));
+  if (!snap.exists()) return null;
+  return profileFromData(snap.id, snap.data());
+}
+
+export async function saveCarrierProfile(id: string, input: CarrierProfileDraft): Promise<void> {
+  const error = carrierProfileError(input);
+  if (error) throw new Error(error);
+  await updateDoc(doc(db, 'carrier_preprofiles', id), {
+    companyName: input.companyName.trim(),
+    contactName: input.contactName.trim(),
+    email: input.email.trim(),
+    baseCity: input.baseCity.trim(),
+    equipmentTypes: input.equipmentTypes,
+    coverageZones: input.coverageZones,
+    handlesLTL: input.handlesLTL,
+    handlesLocal: input.handlesLocal,
+    handlesIntraState: input.handlesIntraState,
+    coversUSA: input.coversUSA,
+  });
 }
 
 function channelFor(record: CarrierDirectoryRecord, requested: InviteChannel): 'whatsapp' | 'email' | null {

@@ -100,7 +100,7 @@ const pricerGroups: NavGroup[] = [
         label: 'Directorio',
         short: 'Directorio',
         icon: BookUser,
-        match: ['pricer-invitations'],
+        match: ['pricer-invitations', 'pricer-carrier-profile'],
         mobile: true,
       },
     ],

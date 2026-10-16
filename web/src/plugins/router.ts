@@ -95,6 +95,16 @@ const router = createRouter({
           },
         },
         {
+          path: 'admin/directory/:id',
+          name: 'admin-carrier-profile',
+          component: () => import('@/views/admin/CarrierProfileView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['admin'] as UserRole[],
+            title: 'Perfil del transportista',
+          },
+        },
+        {
           path: 'admin/invitations',
           name: 'admin-invitations',
           component: () => import('@/views/admin/AdminInvitationsView.vue'),
@@ -137,6 +147,16 @@ const router = createRouter({
           name: 'pricer-directory',
           component: () => import('@/views/admin/AdminDirectoryView.vue'),
           meta: { requiresAuth: true, roles: ['pricer'] as UserRole[], title: 'Directorio' },
+        },
+        {
+          path: 'pricer/directory/:id',
+          name: 'pricer-carrier-profile',
+          component: () => import('@/views/admin/CarrierProfileView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['pricer'] as UserRole[],
+            title: 'Perfil del transportista',
+          },
         },
         {
           path: 'pricer/invitations',

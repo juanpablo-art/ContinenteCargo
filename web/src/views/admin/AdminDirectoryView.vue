@@ -11,6 +11,7 @@ import {
   Check,
   Send,
   UserCheck,
+  ChevronRight,
 } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { demoUsers } from '@/lib/demo-data';
@@ -35,6 +36,9 @@ const auth = useAuthStore();
 const isAdmin = computed(() => auth.currentUser?.role === 'admin');
 const isDemo = computed(() => auth.currentUser?.email === 'demo@continente.local');
 const inviteRoute = computed(() => (isAdmin.value ? 'admin-invitations' : 'pricer-invitations'));
+const profileRoute = computed(() =>
+  isAdmin.value ? 'admin-carrier-profile' : 'pricer-carrier-profile',
+);
 const pricerEmail = computed(() =>
   auth.currentUser?.role === 'pricer' ? auth.currentUser.email : '',
 );
@@ -406,36 +410,42 @@ onMounted(load);
       </p>
 
       <ul v-else class="grid gap-2.5">
-        <li v-for="record in filtered" :key="record.id">
-          <component
-            :is="canInvite(record) && !isAdmin ? 'button' : 'div'"
-            :type="canInvite(record) && !isAdmin ? 'button' : undefined"
-            class="flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left"
+        <li
+          v-for="record in filtered"
+          :key="record.id"
+          class="flex items-start gap-3 rounded-2xl border p-3.5"
+          :class="
+            !canInvite(record) || isAdmin
+              ? 'border-transparent bg-card shadow-card'
+              : selected.has(record.id)
+                ? 'border-brand/30 bg-blue-soft/50'
+                : 'border-transparent bg-card shadow-card'
+          "
+        >
+          <button
+            v-if="!isAdmin"
+            type="button"
+            class="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border"
             :class="
-              !canInvite(record) || isAdmin
-                ? 'border-transparent bg-card shadow-card'
-                : selected.has(record.id)
-                  ? 'border-brand/30 bg-blue-soft/50 transition'
-                  : 'border-transparent bg-card shadow-card transition hover:shadow-card-hover'
+              record.followUp === 'ready'
+                ? 'border-success/30 bg-success-soft text-success'
+                : !canInvite(record)
+                  ? 'border-orange/30 bg-orange-soft text-orange'
+                  : selected.has(record.id)
+                    ? 'border-brand bg-brand text-white'
+                    : 'border-line bg-card text-transparent'
             "
-            @click="canInvite(record) && !isAdmin ? toggle(record.id) : undefined"
+            :aria-label="canInvite(record) ? `Seleccionar ${record.companyName}` : record.companyName"
+            :disabled="!canInvite(record)"
+            @click="toggle(record.id)"
           >
-            <span
-              v-if="!isAdmin"
-              class="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border"
-              :class="
-                record.followUp === 'ready'
-                  ? 'border-success/30 bg-success-soft text-success'
-                  : !canInvite(record)
-                    ? 'border-orange/30 bg-orange-soft text-orange'
-                    : selected.has(record.id)
-                      ? 'border-brand bg-brand text-white'
-                      : 'border-line bg-card text-transparent'
-              "
-            >
-              <UserCheck v-if="!canInvite(record)" class="size-3.5" aria-hidden="true" />
-              <Check v-else class="size-3.5" aria-hidden="true" />
-            </span>
+            <UserCheck v-if="!canInvite(record)" class="size-3.5" aria-hidden="true" />
+            <Check v-else class="size-3.5" aria-hidden="true" />
+          </button>
+          <RouterLink
+            :to="{ name: profileRoute, params: { id: record.id } }"
+            class="min-w-0 flex-1 text-left"
+          >
             <span class="min-w-0 flex-1">
               <span class="flex items-start justify-between gap-3">
                 <span class="truncate text-sm font-semibold text-navy">{{ record.companyName }}</span>
@@ -472,8 +482,12 @@ onMounted(load);
                 </span>
                 <span v-if="record.handlesLTL" class="cc-badge bg-orange-soft text-orange">LTL</span>
               </span>
+              <span class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand">
+                Ver perfil
+                <ChevronRight class="size-3.5" aria-hidden="true" />
+              </span>
             </span>
-          </component>
+          </RouterLink>
         </li>
       </ul>
     </template>
