@@ -60,7 +60,7 @@ const router = createRouter({
           component: () => import('@/views/admin/AdminLoadDetailView.vue'),
           meta: {
             requiresAuth: true,
-            roles: ['admin'] as UserRole[],
+            roles: ['admin', 'pricer'] as UserRole[],
             title: 'Detalle de carga',
           },
         },
@@ -109,6 +109,22 @@ const router = createRouter({
           name: 'admin-units',
           component: () => import('@/views/admin/AdminUnitsView.vue'),
           meta: { requiresAuth: true, roles: ['admin'] as UserRole[], title: 'Unidades' },
+        },
+        {
+          path: 'pricer/loads',
+          name: 'pricer-loads',
+          component: () => import('@/views/pricer/PricerHomeView.vue'),
+          meta: { requiresAuth: true, roles: ['pricer'] as UserRole[], title: 'Mis cargas' },
+        },
+        {
+          path: 'pricer/carriers',
+          name: 'pricer-carriers',
+          component: () => import('@/views/pricer/PricerCarriersView.vue'),
+          meta: {
+            requiresAuth: true,
+            roles: ['pricer'] as UserRole[],
+            title: 'Mis transportistas',
+          },
         },
         // Carrier / independent operator
         {
@@ -188,7 +204,7 @@ const router = createRouter({
           component: () => import('@/views/shared/NotificationsView.vue'),
           meta: {
             requiresAuth: true,
-            roles: ['admin', 'carrier', 'independent_operator'] as UserRole[],
+            roles: ['admin', 'pricer', 'carrier', 'independent_operator'] as UserRole[],
             title: 'Avisos',
           },
         },
@@ -198,7 +214,7 @@ const router = createRouter({
           component: () => import('@/views/shared/ProfileView.vue'),
           meta: {
             requiresAuth: true,
-            roles: ['admin', 'carrier', 'independent_operator'] as UserRole[],
+            roles: ['admin', 'pricer', 'carrier', 'independent_operator'] as UserRole[],
             title: 'Perfil',
           },
         },

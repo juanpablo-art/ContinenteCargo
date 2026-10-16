@@ -18,6 +18,7 @@ import {
   X,
   FileText,
 } from '@lucide/vue';
+import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
 import { LOAD_STATUSES, loadIsOpen, type LoadStatus } from '@/lib/models';
 import {
@@ -36,7 +37,11 @@ import ConfirmModal from '@/components/ConfirmModal.vue';
 import CartaInstruccionSheet from '@/views/admin/CartaInstruccionSheet.vue';
 
 const route = useRoute();
+const auth = useAuthStore();
 const store = useDataStore();
+const loadsRoute = computed(() =>
+  auth.currentUser?.role === 'pricer' ? { name: 'pricer-loads' } : { name: 'admin-loads' },
+);
 
 const loadId = computed(() => String(route.params.id));
 const load = computed(() => store.loadById(loadId.value));
@@ -133,7 +138,7 @@ function sendUrgency() {
     <div v-if="!load" class="cc-card">
       <EmptyState title="Carga no encontrada" subtitle="Puede que se haya eliminado.">
         <template #icon><PackageX /></template>
-        <RouterLink :to="{ name: 'admin-loads' }" class="cc-btn-secondary w-auto px-5">
+        <RouterLink :to="loadsRoute" class="cc-btn-secondary w-auto px-5">
           Ver cargas
         </RouterLink>
       </EmptyState>
@@ -143,7 +148,7 @@ function sendUrgency() {
       <PageHeader
         :eyebrow="load.reference"
         :title="`${load.originCity} → ${load.destinationCity}`"
-        :back="{ name: 'admin-loads' }"
+        :back="loadsRoute"
         back-label="Cargas"
       >
         <template #meta>

@@ -9,6 +9,7 @@ import {
   where,
   getDocs,
   getDoc,
+  deleteField,
   Timestamp,
   type DocumentData,
   type Unsubscribe,
@@ -483,6 +484,16 @@ export async function updateNotificationFields(
   fields: DocumentData,
 ): Promise<void> {
   await updateDoc(doc(db, 'notifications', id), fields);
+}
+
+export async function updateCarrierPricer(
+  userUuid: string,
+  pricerId: string | null,
+): Promise<void> {
+  const snap = await getDocs(query(collection(db, 'users'), where('uuid', '==', userUuid)));
+  const first = snap.docs[0];
+  if (!first) return;
+  await updateDoc(first.ref, pricerId ? { pricerId } : { pricerId: deleteField() });
 }
 
 export async function updateUserStatus(userUuid: string, status: UserStatus): Promise<void> {

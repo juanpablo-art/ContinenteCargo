@@ -23,6 +23,7 @@ import {
   updateNotificationFields,
   updateOfferFields,
   updateUnitFields,
+  updateCarrierPricer,
   updateUserLTL,
   updateUserRoutes,
   updateUserStatus,
@@ -106,8 +107,8 @@ export const useDataStore = defineStore('data', {
       const auth = useAuthStore();
       const user = auth.currentUser;
       if (!user) return;
-      if (user.uuid === 'demo-layout') {
-        if (import.meta.env.DEV) void this.seedDemoData();
+      if (import.meta.env.DEV && user.email === 'demo@continente.local') {
+        void this.seedDemoData();
         return;
       }
 
@@ -116,7 +117,7 @@ export const useDataStore = defineStore('data', {
       this.offers = [];
       this.notifications = [];
       this.companies = [];
-      this.users = user.role === 'admin' ? [] : [user];
+      this.users = user.role === 'admin' || user.role === 'pricer' ? [] : [user];
 
       unsubs.push(
         listenToLoads((incoming) => {
@@ -152,7 +153,7 @@ export const useDataStore = defineStore('data', {
         }),
       );
 
-      if (user.role === 'admin') {
+      if (user.role === 'admin' || user.role === 'pricer') {
         unsubs.push(
           listenToUsers((incoming) => {
             this.users = incoming;
@@ -198,7 +199,8 @@ export const useDataStore = defineStore('data', {
       this.offers = demo.demoOffers();
       this.units = demo.demoUnits();
       this.notifications = demo.demoNotifications();
-      this.users = auth.currentUser?.role === 'admin' ? demo.demoUsers() : [];
+      const role = auth.currentUser?.role;
+      this.users = role === 'admin' || role === 'pricer' ? demo.demoUsers() : [];
       this.listening = true;
       this.loadsReady = true;
     },
@@ -210,6 +212,7 @@ export const useDataStore = defineStore('data', {
       const user = auth.currentUser;
       if (!user) return [];
       if (user.role === 'admin') return this.loads;
+      if (user.role === 'pricer') return this.loadsForPricer();
 
       return this.loads.filter((load) => {
         if (load.confirmedCarrierIds.includes(user.uuid)) return true;
@@ -280,8 +283,43 @@ export const useDataStore = defineStore('data', {
 
     pendingUsers(): AppUser[] {
       return this.users.filter(
-        (u) => u.status === 'pending_approval' && u.role !== 'admin',
+        (u) => u.status === 'pending_approval' && u.role !== 'admin' && u.role !== 'pricer',
       );
+    },
+
+    pricers(): AppUser[] {
+      return this.users
+        .filter((u) => u.role === 'pricer' && u.status === 'approved')
+        .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    },
+
+    carriersForPricer(pricerId?: string): AppUser[] {
+      const auth = useAuthStore();
+      const id = pricerId ?? auth.currentUser?.uuid;
+      if (!id) return [];
+      return this.users
+        .filter((u) => u.pricerId === id)
+        .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    },
+
+    loadsForPricer(): Load[] {
+      const carrierIds = new Set(this.carriersForPricer().map((u) => u.uuid));
+      return this.loads.filter((load) => {
+        if (load.assignedCarrierId && carrierIds.has(load.assignedCarrierId)) return true;
+        return load.confirmedCarrierIds.some((id) => carrierIds.has(id));
+      });
+    },
+
+    async assignPricerToCarrier(carrierId: string, pricerId: string | null) {
+      const idx = this.users.findIndex((u) => u.uuid === carrierId);
+      if (idx < 0) return;
+      const next = { ...this.users[idx] };
+      if (pricerId) next.pricerId = pricerId;
+      else delete next.pricerId;
+      this.users[idx] = next;
+      const auth = useAuthStore();
+      if (auth.currentUser?.email === 'demo@continente.local') return;
+      await updateCarrierPricer(carrierId, pricerId);
     },
 
     loadById(id: string): Load | undefined {
@@ -292,7 +330,7 @@ export const useDataStore = defineStore('data', {
       const auth = useAuthStore();
       const user = auth.currentUser;
       if (!user) return false;
-      if (user.role === 'admin') return true;
+      if (user.role === 'admin' || user.role === 'pricer') return true;
       return (
         load.assignedCarrierId === user.uuid ||
         load.confirmedCarrierIds.includes(user.uuid)

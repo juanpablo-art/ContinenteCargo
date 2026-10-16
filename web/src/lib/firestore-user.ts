@@ -68,6 +68,7 @@ export function userToData(user: AppUser): DocumentData {
   if (user.coverageUSAStates?.length) data.coverageUSAStates = user.coverageUSAStates;
   if (user.notificationEmails?.length) data.notificationEmails = user.notificationEmails;
   if (user.whatsappNumbers?.length) data.whatsappNumbers = user.whatsappNumbers;
+  if (user.pricerId) data.pricerId = user.pricerId;
   const digits = phoneDigits(user.phone);
   if (digits.length >= 10 && digits.length <= 15) {
     data.phoneDigits = digits;
@@ -120,6 +121,7 @@ export function parseUser(data: DocumentData): AppUser | null {
     whatsappNumbers: Array.isArray(data.whatsappNumbers)
       ? (data.whatsappNumbers as string[])
       : [],
+    pricerId: typeof data.pricerId === 'string' ? data.pricerId : undefined,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : undefined,
   };
 }

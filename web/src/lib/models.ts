@@ -1,6 +1,6 @@
 /** Mirrors iOS UserModels / LoadModels / OfferModels / UnitModels. */
 
-export type UserRole = 'admin' | 'carrier' | 'independent_operator';
+export type UserRole = 'admin' | 'carrier' | 'independent_operator' | 'pricer';
 
 export type UserStatus =
   | 'pending_approval'
@@ -196,6 +196,8 @@ export interface AppUser {
   coverageUSAStates?: string[];
   notificationEmails?: string[];
   whatsappNumbers?: string[];
+  /** Pricer assigned to this carrier. */
+  pricerId?: string;
   createdAt?: Date;
 }
 

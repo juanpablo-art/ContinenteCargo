@@ -67,6 +67,22 @@ export function demoLoads(): Load[] {
       weightKg: 14500,
     }),
     load({
+      id: 'l8',
+      reference: 'CC-24-1066',
+      status: 'En tránsito',
+      assignedCarrierId: 'c9',
+      confirmedCarrierIds: ['c9'],
+      confirmedUnitCount: 1,
+      originCity: 'Saltillo',
+      originState: 'Coahuila',
+      destinationCity: 'Monterrey',
+      destinationState: 'N.L.',
+      offeredPrice: 14200,
+      pickupDate: at(-1 * D),
+      deliveryDate: at(D),
+      deadline: at(-2 * D),
+    }),
+    load({
       id: 'l3',
       reference: 'CC-24-1083',
       originCity: 'Nuevo Laredo',
@@ -197,10 +213,11 @@ export function demoUsers(): AppUser[] {
     coverageEquipmentTypes: [],
   };
   return [
-    { ...base, uuid: 'c9', name: 'Fletes Rápidos Saltillo', email: 'ops@fletesrapidos.mx', phone: '844 555 0192', role: 'carrier', status: 'approved', createdAt: at(-40 * D) },
+    { ...base, uuid: 'p1', name: 'Ana Ruiz', email: 'ana.ruiz@continentecargo.com', phone: '81 8000 2201', role: 'pricer', status: 'approved', createdAt: at(-20 * D) },
+    { ...base, uuid: 'c9', name: 'Fletes Rápidos Saltillo', email: 'ops@fletesrapidos.mx', phone: '844 555 0192', role: 'carrier', status: 'approved', pricerId: 'p1', createdAt: at(-40 * D) },
     { ...base, uuid: 'c10', name: 'Héctor Villarreal', email: 'hector.v@gmail.com', phone: '81 1234 5678', role: 'independent_operator', status: 'pending_approval', createdAt: at(-5 * H) },
     { ...base, uuid: 'c11', name: 'Logística Bajío Express', email: 'contacto@bajioexpress.mx', phone: '477 555 0110', role: 'carrier', status: 'pending_approval', handlesLTL: true, createdAt: at(-D) },
-    { ...base, uuid: 'c12', name: 'Transportes del Norte', email: 'trafico@tdn.mx', phone: '81 5555 0177', role: 'carrier', status: 'approved', createdAt: at(-90 * D) },
+    { ...base, uuid: 'c12', name: 'Transportes del Norte', email: 'trafico@tdn.mx', phone: '81 5555 0177', role: 'carrier', status: 'approved', pricerId: 'p1', createdAt: at(-90 * D) },
     { ...base, uuid: 'c13', name: 'Autotransportes Pacífico', email: 'ventas@atpacifico.mx', phone: '667 555 0133', role: 'carrier', status: 'suspended', createdAt: at(-120 * D) },
   ];
 }

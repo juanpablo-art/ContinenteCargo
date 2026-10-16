@@ -42,6 +42,8 @@ const roleLabel = computed(() => {
       return 'Línea transportista';
     case 'independent_operator':
       return 'Operador independiente';
+    case 'pricer':
+      return 'Pricer – Continente Cargo';
     default:
       return '';
   }

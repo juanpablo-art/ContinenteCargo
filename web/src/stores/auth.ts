@@ -97,11 +97,17 @@ export const useAuthStore = defineStore('auth', {
           if (
             demoRole === 'admin' ||
             demoRole === 'carrier' ||
-            demoRole === 'independent_operator'
+            demoRole === 'independent_operator' ||
+            demoRole === 'pricer'
           ) {
             this.currentUser = {
-              uuid: 'demo-layout',
-              name: demoRole === 'admin' ? 'Mariana López' : 'Transportes del Norte',
+              uuid: demoRole === 'pricer' ? 'p1' : 'demo-layout',
+              name:
+                demoRole === 'admin'
+                  ? 'Mariana López'
+                  : demoRole === 'pricer'
+                    ? 'Ana Ruiz'
+                    : 'Transportes del Norte',
               email: 'demo@continente.local',
               phone: '0000000000',
               role: demoRole,

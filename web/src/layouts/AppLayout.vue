@@ -87,7 +87,25 @@ const carrierGroups: NavGroup[] = [
   },
 ];
 
-const groups = computed(() => (isAdmin.value ? adminGroups : carrierGroups));
+const pricerGroups: NavGroup[] = [
+  {
+    label: 'Operación',
+    items: [
+      { name: 'pricer-loads', label: 'Cargas', icon: Package, match: ['admin-load-detail'], mobile: true },
+      { name: 'pricer-carriers', label: 'Transportistas', icon: Users, mobile: true },
+    ],
+  },
+  {
+    label: 'Cuenta',
+    items: [{ name: 'profile', label: 'Perfil', icon: UserCircle }],
+  },
+];
+
+const groups = computed(() => {
+  if (isAdmin.value) return adminGroups;
+  if (auth.currentUser?.role === 'pricer') return pricerGroups;
+  return carrierGroups;
+});
 const mobileItems = computed(() => groups.value.flatMap((g) => g.items).filter((i) => i.mobile));
 
 const roleLabel = computed(() => {
@@ -98,6 +116,8 @@ const roleLabel = computed(() => {
       return 'Línea transportista';
     case 'independent_operator':
       return 'Operador independiente';
+    case 'pricer':
+      return 'Pricer';
     default:
       return '';
   }
