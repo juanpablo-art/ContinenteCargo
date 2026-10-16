@@ -83,8 +83,11 @@ service cloud.firestore {
         email.size() <= 120;
     }
 
+    // Cuentas reales usan UUID de 36, uid de Firebase de 28, o id importado tipo carrier-##########.
     function isUuid(value) {
-      return value is string && value.size() == 36;
+      return value is string &&
+        value.size() >= 18 && value.size() <= 36 &&
+        value.matches('^[A-Za-z0-9_-]+$');
     }
 
     function isMoney(value) {

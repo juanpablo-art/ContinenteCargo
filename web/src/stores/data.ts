@@ -422,7 +422,12 @@ export const useDataStore = defineStore('data', {
       };
       this.loads.push(published);
       await saveLoad(published);
-      await this.notifyCarriersForNewLoad(published);
+      // A failed notice must not look like the load was rejected.
+      try {
+        await this.notifyCarriersForNewLoad(published);
+      } catch {
+        /* the load is already published */
+      }
     },
 
     async notifyCarriersForNewLoad(load: Load) {
@@ -430,6 +435,7 @@ export const useDataStore = defineStore('data', {
       const matching = this.users.filter(
         (u) =>
           u.role !== 'admin' &&
+          u.status === 'approved' &&
           coversLoad(
             u,
             load.originCity,
@@ -440,13 +446,17 @@ export const useDataStore = defineStore('data', {
           ),
       );
       for (const carrier of matching) {
-        await this.notify(
-          carrier.uuid,
-          'new_load',
-          'Nueva carga en tu ruta',
-          `${load.originCity}, ${load.originState} → ${load.destinationCity}, ${load.destinationState} · ${load.equipmentType}`,
-          load.id,
-        );
+        try {
+          await this.notify(
+            carrier.uuid,
+            'new_load',
+            'Nueva carga en tu ruta',
+            `${load.originCity}, ${load.originState} → ${load.destinationCity}, ${load.destinationState} · ${load.equipmentType}`,
+            load.id,
+          );
+        } catch {
+          /* keep notifying the rest */
+        }
       }
     },
 
