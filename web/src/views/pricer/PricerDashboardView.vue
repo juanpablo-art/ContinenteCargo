@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BadgeCheck, Truck, ChartColumn, MapPin, ArrowLeftRight, Users } from '@lucide/vue';
+import { BadgeCheck, Truck, ChartColumn, MapPin, ArrowLeftRight, Users, ChevronRight } from '@lucide/vue';
 import { useDataStore } from '@/stores/data';
 import { loadStatusIsActive, type AppUser, type Load } from '@/lib/models';
-import OpenLoadCard from '@/components/OpenLoadCard.vue';
+import ElapsedCounter from '@/components/ElapsedCounter.vue';
 import PageHeader from '@/components/PageHeader.vue';
 
 const store = useDataStore();
 
 const openLoads = computed(() => store.openLoads());
-const openPreview = computed(() => openLoads.value.slice(0, 4));
 
 const myCarriers = computed(() => store.carriersForPricer());
 const myLoads = computed(() => store.loadsForPricer());
@@ -134,26 +133,7 @@ function initial(carrier: AppUser) {
 
 <template>
   <div class="cc-page">
-    <PageHeader title="Dashboard" subtitle="Cargas publicadas sin transportista y el avance de los tuyos" />
-
-    <section class="mb-5">
-      <div class="mb-2 flex items-end justify-between gap-3">
-        <h2 class="text-sm font-semibold text-navy">Por cubrir</h2>
-        <RouterLink
-          v-if="openLoads.length"
-          :to="{ name: 'pricer-loads' }"
-          class="text-xs font-semibold text-brand"
-        >
-          Ver las {{ openLoads.length }}
-        </RouterLink>
-      </div>
-      <p v-if="!openLoads.length" class="cc-card px-4 py-5 text-sm text-muted">
-        Ninguna carga publicada está esperando transportista.
-      </p>
-      <div v-else class="space-y-2">
-        <OpenLoadCard v-for="load in openPreview" :key="load.id" :load="load" />
-      </div>
-    </section>
+    <PageHeader title="Dashboard" subtitle="Resumen de tu operación" />
 
     <div class="grid grid-cols-3 gap-2 sm:gap-3">
       <article class="cc-card min-w-0 p-3 sm:p-4">
@@ -176,7 +156,48 @@ function initial(carrier: AppUser) {
       </article>
     </div>
 
-    <section class="cc-card mt-4 p-4 md:p-5">
+    <div class="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <aside class="order-1 lg:sticky lg:top-20 lg:order-2 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-line lg:bg-card lg:shadow-card">
+        <div class="mb-2 flex items-center justify-between gap-3 lg:mb-0 lg:border-b lg:border-line lg:px-4 lg:py-3">
+          <h2 class="text-sm font-semibold text-navy">
+            Por cubrir
+            <span class="ml-1 tabular-nums text-muted">{{ openLoads.length }}</span>
+          </h2>
+          <RouterLink :to="{ name: 'pricer-loads' }" class="text-xs font-semibold text-brand">
+            Ver todas
+          </RouterLink>
+        </div>
+        <p v-if="!openLoads.length" class="text-sm text-muted lg:px-4 lg:py-5">
+          Ninguna carga publicada está esperando transportista.
+        </p>
+        <ul
+          v-else
+          class="flex gap-2 overflow-x-auto pb-1 lg:block lg:max-h-[min(32rem,calc(100dvh-9rem))] lg:divide-y lg:divide-line lg:overflow-y-auto lg:pb-0"
+        >
+          <li
+            v-for="load in openLoads"
+            :key="load.id"
+            class="w-60 shrink-0 rounded-2xl border border-line bg-card shadow-card lg:w-auto lg:rounded-none lg:border-0 lg:shadow-none"
+          >
+            <RouterLink
+              :to="{ name: 'admin-load-detail', params: { id: load.id } }"
+              class="flex items-center gap-2 px-3 py-2.5 transition hover:bg-blue-soft/40"
+            >
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm font-semibold text-navy">
+                  {{ load.originCity }} → {{ load.destinationCity }}
+                </span>
+                <span class="block truncate text-[11px] text-muted">{{ load.reference }}</span>
+              </span>
+              <ElapsedCounter :since="load.publishedAt" class="shrink-0 text-[13px]" />
+              <ChevronRight class="hidden size-3.5 shrink-0 text-muted lg:block" aria-hidden="true" />
+            </RouterLink>
+          </li>
+        </ul>
+      </aside>
+
+      <div class="order-2 min-w-0 space-y-4 lg:order-1">
+    <section class="cc-card p-4 md:p-5">
       <h2 class="flex items-center gap-2 text-sm font-semibold text-navy">
         <ChartColumn class="size-4 text-brand" aria-hidden="true" />
         Tendencia mensual
@@ -202,7 +223,7 @@ function initial(carrier: AppUser) {
       </div>
     </section>
 
-    <section class="cc-card mt-4 p-4 md:p-5">
+    <section class="cc-card p-4 md:p-5">
       <h2 class="flex items-center gap-2 text-sm font-semibold text-navy">
         <ChartColumn class="size-4 text-brand" aria-hidden="true" />
         Estado de cargas
@@ -232,7 +253,7 @@ function initial(carrier: AppUser) {
       </p>
     </section>
 
-    <section v-if="topOrigins.length" class="cc-card mt-4 p-4 md:p-5">
+    <section v-if="topOrigins.length" class="cc-card p-4 md:p-5">
       <h2 class="flex items-center gap-2 text-sm font-semibold text-navy">
         <MapPin class="size-4 text-brand" aria-hidden="true" />
         Principales orígenes
@@ -251,7 +272,7 @@ function initial(carrier: AppUser) {
       </ul>
     </section>
 
-    <section v-if="topRoutes.length" class="cc-card mt-4 p-4 md:p-5">
+    <section v-if="topRoutes.length" class="cc-card p-4 md:p-5">
       <h2 class="flex items-center gap-2 text-sm font-semibold text-navy">
         <ArrowLeftRight class="size-4 text-brand" aria-hidden="true" />
         Rutas frecuentes
@@ -272,7 +293,7 @@ function initial(carrier: AppUser) {
       </ol>
     </section>
 
-    <section v-if="topCarriers.length" class="cc-card mt-4 p-4 md:p-5">
+    <section v-if="topCarriers.length" class="cc-card p-4 md:p-5">
       <h2 class="flex items-center gap-2 text-sm font-semibold text-navy">
         <Users class="size-4 text-brand" aria-hidden="true" />
         Mis transportistas
@@ -297,5 +318,7 @@ function initial(carrier: AppUser) {
         </li>
       </ul>
     </section>
+      </div>
+    </div>
   </div>
 </template>
