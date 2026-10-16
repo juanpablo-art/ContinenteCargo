@@ -776,6 +776,45 @@ function registrationLink(phone: string | undefined): string {
   return suffix ? `${base}/register?telefono=${suffix}` : `${base}/register`;
 }
 
+function invitationEmailLockId(email: string, phone: string | undefined): string {
+  const raw = `${email.trim().toLowerCase()}__${registrationPhone(phone) || "nophone"}`;
+  return raw.replace(/[^a-z0-9@._+-]/gi, "_").slice(0, 700);
+}
+
+/** Sends the invitation mail once per address in a short window, even if WhatsApp and email docs both fire. */
+async function deliverInvitationEmail(
+  ctx: ReturnType<typeof buildContext>,
+  email: string,
+  phone: string | undefined,
+  firstName: string,
+  link: string,
+): Promise<"sent" | "failed" | "skipped"> {
+  const lockRef = admin.firestore().collection("invitation_email_locks").doc(invitationEmailLockId(email, phone));
+  const nowMs = Date.now();
+  const claimed = await admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(lockRef);
+    const last = snap.get("sentAtMs");
+    if (typeof last === "number" && nowMs - last < 2 * 60 * 1000) return false;
+    tx.set(lockRef, { sentAtMs: nowMs, email: email.trim().toLowerCase() });
+    return true;
+  });
+  if (!claimed) {
+    console.log(`[onInvitationCreated] Email already sent recently to ${email}`);
+    return "skipped";
+  }
+  try {
+    await ctx.mailer.sendMail(
+      buildInvitationMailOptions(firstName, email.trim(), ctx.fromEmail, phone, link),
+    );
+    console.log(`[onInvitationCreated] Email sent to ${email}`);
+    return "sent";
+  } catch (err) {
+    console.error("[onInvitationCreated] Email failed:", err);
+    await lockRef.delete().catch(() => undefined);
+    return "failed";
+  }
+}
+
 export const onInvitationCreated = onDocumentCreated(
   { document: "invitations/{inviteId}", region: REGION, secrets: [...WA_SECRETS] },
   async (event) => {
@@ -789,37 +828,35 @@ export const onInvitationCreated = onDocumentCreated(
     const firstName = name.split(" ")[0];
     const inviteId  = event.params.inviteId;
     const link      = registrationLink(phone);
+    const emailAddress = email?.trim() && email.includes("@") ? email.trim() : "";
 
     // ── Email channel ─────────────────────────────────────────────────────────
     if (channel === "email") {
-      if (!email) {
+      if (!emailAddress) {
         await event.data!.ref.update({ status: "invalid_email" });
         return;
       }
-      try {
-        const mailOptions = buildInvitationMailOptions(
-          firstName,
-          email,
-          ctx.fromEmail,
-          phone || undefined,
-          link
-        );
-        await ctx.mailer.sendMail(mailOptions);
-        await event.data!.ref.update({
-          status: "sent",
-          sentAt: admin.firestore.Timestamp.now(),
-        });
-      } catch (err) {
-        console.error("[onInvitationCreated] Email failed:", err);
-        await event.data!.ref.update({ status: "failed" });
-      }
+      const emailStatus = await deliverInvitationEmail(ctx, emailAddress, phone, firstName, link);
+      await event.data!.ref.update({
+        status: emailStatus === "failed" ? "failed" : "sent",
+        emailStatus,
+        sentAt: admin.firestore.Timestamp.now(),
+      });
       return;
     }
 
     // ── WhatsApp channel (default) ────────────────────────────────────────────
+    const emailTask = emailAddress
+      ? deliverInvitationEmail(ctx, emailAddress, phone, firstName, link)
+      : Promise.resolve("none" as const);
+
     const formatted = formatPhone(phone);
     if (!formatted) {
-      await event.data!.ref.update({ status: "invalid_phone" });
+      const emailStatus = await emailTask;
+      await event.data!.ref.update({
+        status: "invalid_phone",
+        ...(emailStatus === "none" ? {} : { emailStatus }),
+      });
       return;
     }
 
@@ -856,8 +893,10 @@ export const onInvitationCreated = onDocumentCreated(
       event:          "invitation_sent",
     });
 
+    const emailStatus = await emailTask;
     await event.data!.ref.update({
       status: sent ? "sent" : "failed",
+      ...(emailStatus === "none" ? {} : { emailStatus }),
       sentAt: admin.firestore.Timestamp.now(),
     });
   }
