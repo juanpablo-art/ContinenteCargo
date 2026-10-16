@@ -5,9 +5,9 @@ import { Mail, Lock } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { homePathForRole } from '@/lib/role-home';
 
-const email = ref('');
-const password = ref('');
 const auth = useAuthStore();
+const email = ref(auth.savedEmail);
+const password = ref(auth.savedPassword);
 const router = useRouter();
 
 async function onSubmit() {

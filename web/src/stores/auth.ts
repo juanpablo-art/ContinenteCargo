@@ -24,6 +24,7 @@ import type {
 } from '@/lib/models';
 import { newUuid } from '@/lib/models';
 import { createUserProfileViaFunction } from '@/lib/registration';
+import { readSavedLogin, writeSavedLogin } from '@/lib/credentials';
 
 function dataStore() {
   // Lazy import avoids circular dependency with stores/data.ts
@@ -70,12 +71,17 @@ function mapAuthError(error: AuthError | Error): string {
 }
 
 export const useAuthStore = defineStore('auth', {
-  state: () => ({
-    currentUser: null as AppUser | null,
-    isCheckingAuth: true,
-    isLoading: false,
-    errorMessage: null as string | null,
-  }),
+  state: () => {
+    const saved = readSavedLogin();
+    return {
+      currentUser: null as AppUser | null,
+      isCheckingAuth: true,
+      isLoading: false,
+      errorMessage: null as string | null,
+      savedEmail: saved.email,
+      savedPassword: saved.password,
+    };
+  },
 
   getters: {
     isLoggedIn: (s) => s.currentUser != null,
@@ -153,6 +159,9 @@ export const useAuthStore = defineStore('auth', {
           return false;
         }
         this.currentUser = profile;
+        this.savedEmail = email.trim();
+        this.savedPassword = password;
+        writeSavedLogin(this.savedEmail, this.savedPassword);
         const data = await dataStore();
         data.startListeners();
         return true;

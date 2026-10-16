@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
   BadgeCheck,
   Building2,
@@ -43,11 +43,20 @@ type CoverageMode = 'zone' | 'route';
 
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
+
+function invitePhone(): string {
+  const raw = route.query.telefono ?? route.query.phone ?? '';
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const digits = String(value ?? '').replace(/\D/g, '');
+  const local = digits.startsWith('52') && digits.length === 12 ? digits.slice(2) : digits;
+  return /^\d{10}$/.test(local) ? local : '';
+}
 
 const step = ref<Step>('basic');
 const name = ref('');
 const email = ref('');
-const phone = ref('');
+const phone = ref(invitePhone());
 const password = ref('');
 const companyName = ref('');
 const companyContact = ref('');
@@ -129,7 +138,11 @@ function applyPreProfile(profile: CarrierPreProfile) {
   if (!email.value.trim()) email.value = profile.email;
   if (!name.value.trim()) name.value = profile.contactName;
   handlesLTL.value = profile.handlesLTL;
-  handlesLocal.value = profile.handlesLocal || handlesLocal.value;
+  handlesLocal.value = profile.handlesLocal;
+  if (typeof profile.handlesIntraState === 'boolean') {
+    handlesIntraState.value = profile.handlesIntraState;
+  }
+  if (typeof profile.coversUSA === 'boolean') coversUSA.value = profile.coversUSA;
 
   const states = profile.coverageZones.flatMap((zoneId) => {
     const zone = MEXICAN_ZONES.find((item) => item.id === zoneId);
@@ -139,7 +152,13 @@ function applyPreProfile(profile: CarrierPreProfile) {
 
   const equipment = profile.equipmentTypes.filter(isEquipment);
   if (equipment.length) coverageEquipment.value = new Set(equipment);
-  preProfileFound.value = profile.companyName.trim() !== '';
+  preProfileFound.value = Boolean(
+    profile.companyName.trim() ||
+      profile.contactName.trim() ||
+      profile.email.trim() ||
+      states.length ||
+      equipment.length,
+  );
 }
 
 watch(phoneDigits, async (digits) => {
@@ -154,7 +173,7 @@ watch(phoneDigits, async (digits) => {
   if (seq !== lookupSeq) return;
   isLookingUpPreProfile.value = false;
   if (profile) applyPreProfile(profile);
-});
+}, { immediate: true });
 
 watch(newWhatsappInput, () => {
   whatsappCheckError.value = '';
@@ -334,6 +353,17 @@ function goLogin() {
         <span class="ml-auto">Paso 1 de 2</span>
       </div>
 
+      <div
+        v-if="preProfileFound"
+        class="rounded-xl border border-blue/30 bg-blue-soft px-4 py-3 text-sm text-navy"
+      >
+        <p class="font-semibold">Tu perfil ya está preparado</p>
+        <p class="mt-1 text-xs leading-relaxed text-blue-ink">
+          Llenamos los datos que ya tenemos de tu invitación. Revísalos, cambia lo que haga
+          falta y completa lo que esté vacío. La contraseña no viene incluida.
+        </p>
+      </div>
+
       <div>
         <label class="cc-label" for="name">Nombre completo</label>
         <div class="relative">
@@ -413,6 +443,9 @@ function goLogin() {
             class="cc-field pl-10"
           />
         </div>
+        <p v-if="preProfileFound" class="cc-hint">
+          Elige una contraseña para iniciar sesión. Este dato no viene en la invitación.
+        </p>
       </div>
 
       <div class="h-px bg-line" />

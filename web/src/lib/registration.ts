@@ -11,6 +11,8 @@ export interface CarrierPreProfile {
   coverageZones: string[];
   handlesLTL: boolean;
   handlesLocal: boolean;
+  handlesIntraState?: boolean;
+  coversUSA?: boolean;
 }
 
 const EMAIL_PATTERN = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
@@ -57,6 +59,9 @@ export async function lookupCarrierPreProfile(phone: string): Promise<CarrierPre
         : [],
       handlesLTL: Boolean(data.handlesLTL),
       handlesLocal: Boolean(data.handlesLocal),
+      handlesIntraState:
+        typeof data.handlesIntraState === 'boolean' ? data.handlesIntraState : undefined,
+      coversUSA: typeof data.coversUSA === 'boolean' ? data.coversUSA : undefined,
     };
   } catch {
     return null;
