@@ -1,9 +1,19 @@
 <script setup lang="ts">
-import { onBeforeUnmount, watch } from 'vue';
+import { computed, onBeforeUnmount, watch } from 'vue';
 import { X } from '@lucide/vue';
+import { useMobileActionBar } from '@/lib/mobile-action-bar';
 
 const props = defineProps<{ open: boolean; title: string; subtitle?: string }>();
 const emit = defineEmits<{ close: [] }>();
+const { keyboardInset } = useMobileActionBar();
+const panelStyle = computed(() =>
+  keyboardInset.value > 0
+    ? {
+        marginBottom: `${keyboardInset.value}px`,
+        maxHeight: `calc(92dvh - ${keyboardInset.value}px)`,
+      }
+    : undefined,
+);
 
 function onKey(e: KeyboardEvent) {
   if (e.key === 'Escape') emit('close');
@@ -42,6 +52,7 @@ onBeforeUnmount(() => {
       >
         <div
           class="flex max-h-[92dvh] w-full max-w-xl animate-cc-in flex-col overflow-hidden rounded-t-3xl bg-card shadow-elevated sm:rounded-2xl"
+          :style="panelStyle"
         >
           <header class="flex items-start gap-3 border-b border-line px-5 pb-4 pt-5">
             <div class="min-w-0 flex-1">

@@ -4,7 +4,8 @@ import type { AppUser } from '@/lib/models';
 import { Truck, TriangleAlert } from '@lucide/vue';
 import { useDataStore, type TakeLoadResult } from '@/stores/data';
 import { unitIsAvailableFor, type Load } from '@/lib/models';
-import { formatMoney, toDatetimeLocalValue, fromDatetimeLocalValue } from '@/lib/format';
+import { formatMoney, parseTariff, toDatetimeLocalValue, fromDatetimeLocalValue } from '@/lib/format';
+import { useMobileActionBar } from '@/lib/mobile-action-bar';
 import ActionPanel from '@/components/ActionPanel.vue';
 import ResultState from '@/components/ResultState.vue';
 
@@ -12,6 +13,7 @@ const props = defineProps<{ load: Load }>();
 const emit = defineEmits<{ close: []; done: [] }>();
 
 const store = useDataStore();
+const { style: confirmBarStyle } = useMobileActionBar();
 const selectedUnitId = ref<string>('');
 const availableUnitCount = ref(1);
 const proposedPriceText = ref('');
@@ -39,10 +41,7 @@ const availableUnits = computed(() =>
     ),
 );
 
-const proposedPricePerUnit = computed(() => {
-  const digits = proposedPriceText.value.replace(/[^\d.]/g, '');
-  return digits ? Number(digits) : null;
-});
+const proposedPricePerUnit = computed(() => parseTariff(proposedPriceText.value));
 
 /** Uses maxAuthorizedPriceSinIVA for logic only — never displayed to carrier. */
 const needsAdminApproval = computed(() => {
@@ -91,17 +90,22 @@ watch(operatorPhone, (phone) => {
 });
 
 async function confirm() {
-  if (!canConfirm.value) return;
+  const proposed = proposedPricePerUnit.value;
+  if (!canConfirm.value || proposed == null) return;
+  const eta = fromDatetimeLocalValue(unitETA.value);
+  if (Number.isNaN(eta.getTime())) {
+    error.value = 'Revisa la fecha de llegada al origen.';
+    return;
+  }
   isConfirming.value = true;
   error.value = '';
   try {
-    const proposed = proposedPricePerUnit.value ?? props.load.offeredPrice;
     if (needsAdminApproval.value) {
       result.value = await store.submitCounterOffer({
         loadId: props.load.id,
         unitId: selectedUnitId.value || undefined,
         operatorId: foundOperator.value?.uuid,
-        unitETA: fromDatetimeLocalValue(unitETA.value),
+        unitETA: eta,
         trackingUrl: trackingUrl.value.trim(),
         availableUnitCount: availableUnitCount.value,
         proposedPricePerUnit: proposed,
@@ -111,9 +115,10 @@ async function confirm() {
         loadId: props.load.id,
         unitId: selectedUnitId.value || undefined,
         operatorId: foundOperator.value?.uuid,
-        unitETA: fromDatetimeLocalValue(unitETA.value),
+        unitETA: eta,
         trackingUrl: trackingUrl.value.trim(),
         availableUnitCount: availableUnitCount.value,
+        proposedPricePerUnit: proposed,
       });
     }
   } catch (err) {
@@ -196,9 +201,9 @@ function resultBody(r: TakeLoadResult) {
           <input
             id="take-price"
             v-model="proposedPriceText"
-            type="number"
-            min="0"
-            inputmode="numeric"
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
             class="cc-field pl-16 text-lg font-semibold tabular-nums"
           />
         </div>
@@ -274,10 +279,22 @@ function resultBody(r: TakeLoadResult) {
         </p>
       </div>
 
+      <p v-if="proposedPricePerUnit == null" class="text-xs text-danger">Escribe un precio mayor a cero.</p>
+      <div class="h-24 md:hidden" aria-hidden="true" />
+    </template>
+  </ActionPanel>
+
+  <Teleport to="body">
+    <div
+      v-if="!result"
+      class="fixed z-40 border-t border-line bg-card/95 px-4 py-3 shadow-elevated backdrop-blur-md"
+      :style="confirmBarStyle"
+    >
+      <p v-if="error" class="mb-2 text-sm text-danger">{{ error }}</p>
       <button
         type="button"
-        class="cc-btn h-12"
-        :disabled="!canConfirm || isConfirming"
+        class="cc-btn h-12 w-full"
+        :disabled="!canConfirm || proposedPricePerUnit == null || isConfirming"
         @click="confirm"
       >
         {{
@@ -288,6 +305,6 @@ function resultBody(r: TakeLoadResult) {
               : 'Confirmar y tomar carga'
         }}
       </button>
-    </template>
-  </ActionPanel>
+    </div>
+  </Teleport>
 </template>

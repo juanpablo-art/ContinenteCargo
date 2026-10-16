@@ -7,7 +7,7 @@ import PageHeader from '@/components/PageHeader.vue';
 import SheetModal from '@/components/SheetModal.vue';
 import StatusBadge from '@/components/StatusBadge.vue';
 import { loadIsOpen, type OfferStatus } from '@/lib/models';
-import { formatDateTime, formatMoney, timeRemaining } from '@/lib/format';
+import { formatDateTime, formatMoney, parseTariff, timeRemaining } from '@/lib/format';
 import { toast } from '@/lib/toast';
 
 const store = useDataStore();
@@ -29,7 +29,7 @@ const rows = computed(() =>
 
 const selected = computed(() => rows.value.find((r) => r.offer.id === selectedId.value) ?? null);
 
-const editableStatuses: OfferStatus[] = ['Activa', 'Ganando', 'Superada'];
+const editableStatuses: OfferStatus[] = ['Activa', 'Ganando', 'Superada', 'PendienteAprobacion'];
 
 const isEditable = computed(() => {
   const row = selected.value;
@@ -48,10 +48,7 @@ const maxPositionable = computed(() => {
   return Math.max(1, remaining + row.offer.availableUnitCount);
 });
 
-const parsedAmount = computed(() => {
-  const n = Number(amountText.value);
-  return Number.isFinite(n) && n > 0 ? n : null;
-});
+const parsedAmount = computed(() => parseTariff(amountText.value));
 
 const canUpdate = computed(() => {
   const row = selected.value;
@@ -64,7 +61,7 @@ const canUpdate = computed(() => {
 watch(selected, (row) => {
   updated.value = false;
   if (!row) return;
-  amountText.value = String(Math.round(row.offer.proposedPrice ?? row.offer.amount));
+  amountText.value = String(row.offer.proposedPrice ?? row.offer.amount);
   unitCount.value = row.offer.availableUnitCount || 1;
 });
 
@@ -231,7 +228,14 @@ const kindLabel = (mode?: string, availabilityOnly?: boolean) => {
             Puedes cambiar el precio o la cantidad de unidades que puedes posicionar.
           </p>
           <label class="cc-label mt-3" for="edit-amount">Precio por unidad (sin IVA)</label>
-          <input id="edit-amount" v-model="amountText" type="number" min="1" class="cc-field font-semibold" />
+          <input
+            id="edit-amount"
+            v-model="amountText"
+            type="text"
+            inputmode="decimal"
+            autocomplete="off"
+            class="cc-field font-semibold"
+          />
           <p v-if="parsedAmount && unitCount > 1" class="cc-hint">
             Total: {{ formatMoney(parsedAmount * unitCount, selected.offer.currency) }}
           </p>
@@ -246,9 +250,6 @@ const kindLabel = (mode?: string, availabilityOnly?: boolean) => {
               class="cc-field"
             />
           </div>
-          <button type="button" class="cc-btn mt-4 h-11" :disabled="!canUpdate || saving" @click="save">
-            {{ saving ? 'Guardando…' : 'Actualizar oferta' }}
-          </button>
         </div>
 
         <RouterLink
@@ -260,6 +261,11 @@ const kindLabel = (mode?: string, availabilityOnly?: boolean) => {
           Ver detalle completo de la carga
           <ChevronRight class="size-4" aria-hidden="true" />
         </RouterLink>
+      </template>
+      <template v-if="isEditable" #footer>
+        <button type="button" class="cc-btn h-12 flex-1" :disabled="!canUpdate || saving" @click="save">
+          {{ saving ? 'Guardando…' : 'Actualizar oferta' }}
+        </button>
       </template>
     </SheetModal>
   </div>

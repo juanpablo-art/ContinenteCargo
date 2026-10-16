@@ -502,6 +502,7 @@ export const useDataStore = defineStore('data', {
       unitETA?: Date;
       trackingUrl?: string;
       availableUnitCount?: number;
+      proposedPricePerUnit?: number;
     }): Promise<TakeLoadResult> {
       const auth = useAuthStore();
       const user = auth.currentUser;
@@ -552,6 +553,11 @@ export const useDataStore = defineStore('data', {
       this.loads[loadIdx].assignedOperatorId = opts.operatorId;
       this.loads[loadIdx].unitETA = opts.unitETA;
       this.loads[loadIdx].trackingUrl = opts.trackingUrl ?? '';
+      const agreedPrice =
+        opts.proposedPricePerUnit != null && opts.proposedPricePerUnit > 0
+          ? opts.proposedPricePerUnit
+          : load.offeredPrice;
+      this.loads[loadIdx].assignedPriceSinIVA = agreedPrice;
       if (optUnitIdx != null) this.units[optUnitIdx].status = 'Reservada';
 
       if (loadIsFull(this.loads[loadIdx])) {
@@ -582,9 +588,10 @@ export const useDataStore = defineStore('data', {
         carrierId: user.uuid,
         carrierName: user.name,
         unitId: opts.unitId,
-        amount: load.offeredPrice,
+        amount: agreedPrice,
         currency: load.currency,
         isAvailabilityOnly: false,
+        proposedPrice: agreedPrice,
         availableUnitCount,
         status: 'Ganadora',
         submittedAt: new Date(),
@@ -716,16 +723,24 @@ export const useDataStore = defineStore('data', {
       if (idx < 0 || newAmountPerUnit <= 0) return;
       const editable: OfferStatus[] = ['Activa', 'Ganando', 'Superada', 'PendienteAprobacion'];
       if (!editable.includes(this.offers[idx].status)) return;
-      const count = Math.max(1, newUnitCount);
+      const count = Math.max(1, Math.round(newUnitCount));
+      const previous = { ...this.offers[idx] };
       this.offers[idx].proposedPrice = newAmountPerUnit;
       this.offers[idx].amount = newAmountPerUnit * count;
       this.offers[idx].availableUnitCount = count;
       if (useAuthStore().currentUser?.uuid === 'demo-layout') return;
-      await updateOfferFields(offerId, {
-        amount: this.offers[idx].amount,
-        proposedPrice: newAmountPerUnit,
-        availableUnitCount: count,
-      });
+      try {
+        await updateOfferFields(offerId, {
+          amount: this.offers[idx].amount,
+          proposedPrice: newAmountPerUnit,
+          availableUnitCount: count,
+        });
+      } catch (error) {
+        this.offers[idx].proposedPrice = previous.proposedPrice;
+        this.offers[idx].amount = previous.amount;
+        this.offers[idx].availableUnitCount = previous.availableUnitCount;
+        throw error;
+      }
     },
 
     // ── Bids ──────────────────────────────────────────────────────────

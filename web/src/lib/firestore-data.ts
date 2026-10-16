@@ -413,7 +413,12 @@ export async function updateLoadForCarrierConfirmation(load: Load): Promise<void
   };
   if (load.assignedUnitId) fields.assignedUnitId = load.assignedUnitId;
   if (load.assignedOperatorId) fields.assignedOperatorId = load.assignedOperatorId;
-  if (load.unitETA) fields.unitETA = ts(load.unitETA);
+  if (load.unitETA && !Number.isNaN(load.unitETA.getTime())) {
+    fields.unitETA = ts(load.unitETA);
+  }
+  if (load.assignedPriceSinIVA != null && load.assignedPriceSinIVA > 0) {
+    fields.assignedPriceSinIVA = load.assignedPriceSinIVA;
+  }
   if (load.status === 'Asignado') {
     fields.status = load.status;
     if (load.assignedCarrierId) fields.assignedCarrierId = load.assignedCarrierId;

@@ -1,0 +1,798 @@
+rules_version = '2';
+// Versión: 2026-10-09
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: Firebase Auth uid
+    // Fields:
+    //   - uuid: string (required, 36, immutable) - id de la app
+    //   - name: string (required, 1-80)
+    //   - email: string (required, email, immutable)
+    //   - phone: string (required, 0-30)
+    //   - phoneDigits: string (optional, 10-15 digitos)
+    //   - role: string (required, admin|carrier|independent_operator, immutable desde el cliente)
+    //   - status: string (required, pending_approval|approved|rejected|suspended)
+    //   - canNegotiateRates: bool (required)
+    //   - companyId: string (optional, uuid)
+    //   - routes: list (optional, max 12)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: users_by_phone
+    // Document ID: telefono solo digitos
+    // Fields: phoneDigits, uuid, name, role, status
+    // Lectura de un documento concreto. No se puede listar la coleccion.
+    //
+    // Collection: companies
+    // Document ID: uuid
+    // Fields: id, name, contactName, phone, email, rfc, status, createdAt
+    //
+    // Collection: loads
+    // Document ID: uuid
+    // Campos de la carga, historial y datos de contacto del cliente.
+    //
+    // Collection: units
+    // Document ID: uuid
+    //
+    // Collection: offers
+    // Document ID: uuid
+    //
+    // Collection: notifications
+    // Document ID: uuid
+    // Consulta: userId == uuid del usuario
+    //
+    // ===============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isSignedIn() && request.auth.uid == resource.data.uid;
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$') &&
+        email.size() <= 120;
+    }
+
+    function isUuid(value) {
+      return value is string && value.size() == 36;
+    }
+
+    function isMoney(value) {
+      return value is number && value >= 0 && value <= 100000000;
+    }
+
+    function isPlausibleClientTime(time) {
+      return time is timestamp &&
+        time > request.time - duration.value(1, 'd') &&
+        time < request.time + duration.value(10, 'm');
+    }
+
+    function callerData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function callerUuid() {
+      return callerData().uuid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        callerData().role == 'admin' &&
+        callerData().status == 'approved';
+    }
+
+    function isPricer() {
+      return isSignedIn() &&
+        callerData().role == 'pricer' &&
+        callerData().status == 'approved';
+    }
+
+    function isAdminOrPricer() {
+      return isAdmin() || isPricer();
+    }
+
+    function isApproved() {
+      return isSignedIn() && callerData().status == 'approved';
+    }
+
+    function isEquipmentItem(value) {
+      return value in [
+        "Caja Seca 48'",
+        "Caja Seca 53'",
+        'Plataforma',
+        'Refrigerado',
+        'Rabón',
+        'Tортón',
+        'Sencillo Portacontenedor',
+        'Full Portacontenedor'
+      ];
+    }
+
+    function isEquipmentList(list) {
+      return list is list && list.size() <= 8 &&
+        (list.size() < 1 || isEquipmentItem(list[0])) &&
+        (list.size() < 2 || isEquipmentItem(list[1])) &&
+        (list.size() < 3 || isEquipmentItem(list[2])) &&
+        (list.size() < 4 || isEquipmentItem(list[3])) &&
+        (list.size() < 5 || isEquipmentItem(list[4])) &&
+        (list.size() < 6 || isEquipmentItem(list[5])) &&
+        (list.size() < 7 || isEquipmentItem(list[6])) &&
+        (list.size() < 8 || isEquipmentItem(list[7]));
+    }
+
+    function isRequirementItem(value) {
+      return value in [
+        'Refrigeración',
+        'Material Peligroso',
+        'Acceso a Puerto',
+        'Carga Sobredimensionada',
+        'Plataforma Hidráulica',
+        'Operadores en Equipo'
+      ];
+    }
+
+    function isRequirementList(list) {
+      return list is list && list.size() <= 6 &&
+        (list.size() < 1 || isRequirementItem(list[0])) &&
+        (list.size() < 2 || isRequirementItem(list[1])) &&
+        (list.size() < 3 || isRequirementItem(list[2])) &&
+        (list.size() < 4 || isRequirementItem(list[3])) &&
+        (list.size() < 5 || isRequirementItem(list[4])) &&
+        (list.size() < 6 || isRequirementItem(list[5]));
+    }
+
+    function isZoneList(list) {
+      return list is list && list.size() <= 16 &&
+        (list.size() < 1 || (list[0] is string && list[0].size() > 0 && list[0].size() <= 40)) &&
+        (list.size() < 2 || (list[1] is string && list[1].size() > 0 && list[1].size() <= 40)) &&
+        (list.size() < 3 || (list[2] is string && list[2].size() > 0 && list[2].size() <= 40)) &&
+        (list.size() < 4 || (list[3] is string && list[3].size() > 0 && list[3].size() <= 40)) &&
+        (list.size() < 5 || (list[4] is string && list[4].size() > 0 && list[4].size() <= 40)) &&
+        (list.size() < 6 || (list[5] is string && list[5].size() > 0 && list[5].size() <= 40)) &&
+        (list.size() < 7 || (list[6] is string && list[6].size() > 0 && list[6].size() <= 40)) &&
+        (list.size() < 8 || (list[7] is string && list[7].size() > 0 && list[7].size() <= 40)) &&
+        (list.size() < 9 || (list[8] is string && list[8].size() > 0 && list[8].size() <= 40)) &&
+        (list.size() < 10 || (list[9] is string && list[9].size() > 0 && list[9].size() <= 40)) &&
+        (list.size() < 11 || (list[10] is string && list[10].size() > 0 && list[10].size() <= 40)) &&
+        (list.size() < 12 || (list[11] is string && list[11].size() > 0 && list[11].size() <= 40)) &&
+        (list.size() < 13 || (list[12] is string && list[12].size() > 0 && list[12].size() <= 40)) &&
+        (list.size() < 14 || (list[13] is string && list[13].size() > 0 && list[13].size() <= 40)) &&
+        (list.size() < 15 || (list[14] is string && list[14].size() > 0 && list[14].size() <= 40)) &&
+        (list.size() < 16 || (list[15] is string && list[15].size() > 0 && list[15].size() <= 40));
+    }
+
+    function isValidRoute(route) {
+      return route is map &&
+        route.keys().hasOnly(['id', 'originState', 'destinationState', 'bidirectional', 'equipmentTypes']) &&
+        route.keys().hasAll(['id', 'originState', 'destinationState', 'bidirectional', 'equipmentTypes']) &&
+        isUuid(route.id) &&
+        route.originState is string && route.originState.size() > 0 && route.originState.size() <= 40 &&
+        route.destinationState is string && route.destinationState.size() > 0 && route.destinationState.size() <= 40 &&
+        route.bidirectional is bool &&
+        isEquipmentList(route.equipmentTypes);
+    }
+
+    function isValidRoutes(list) {
+      return list is list && list.size() <= 12 &&
+        (list.size() < 1 || isValidRoute(list[0])) &&
+        (list.size() < 2 || isValidRoute(list[1])) &&
+        (list.size() < 3 || isValidRoute(list[2])) &&
+        (list.size() < 4 || isValidRoute(list[3])) &&
+        (list.size() < 5 || isValidRoute(list[4])) &&
+        (list.size() < 6 || isValidRoute(list[5])) &&
+        (list.size() < 7 || isValidRoute(list[6])) &&
+        (list.size() < 8 || isValidRoute(list[7])) &&
+        (list.size() < 9 || isValidRoute(list[8])) &&
+        (list.size() < 10 || isValidRoute(list[9])) &&
+        (list.size() < 11 || isValidRoute(list[10])) &&
+        (list.size() < 12 || isValidRoute(list[11]));
+    }
+
+    function isLoadStatus(value) {
+      return value in [
+        'Publicado',
+        'Asignado',
+        'En camino a recolección',
+        'En origen',
+        'Cargado',
+        'En tránsito',
+        'Entregado',
+        'Cancelado'
+      ];
+    }
+
+    function loadStep(status) {
+      return status == 'Publicado' ? 0 :
+        status == 'Asignado' ? 1 :
+        status == 'En camino a recolección' ? 2 :
+        status == 'En origen' ? 3 :
+        status == 'Cargado' ? 4 :
+        status == 'En tránsito' ? 5 :
+        status == 'Entregado' ? 6 : -1;
+    }
+
+    function isValidStatusChange(change) {
+      return change is map &&
+        change.keys().hasOnly(['id', 'status', 'changedBy', 'changedByName', 'changedAt', 'notes']) &&
+        change.keys().hasAll(['id', 'status', 'changedBy', 'changedByName', 'changedAt', 'notes']) &&
+        isUuid(change.id) &&
+        isLoadStatus(change.status) &&
+        isUuid(change.changedBy) &&
+        change.changedByName is string && change.changedByName.size() > 0 && change.changedByName.size() <= 80 &&
+        change.changedAt is timestamp &&
+        change.notes is string && change.notes.size() <= 500;
+    }
+
+    function isValidHistory(list) {
+      return list is list && list.size() <= 12 &&
+        (list.size() < 1 || isValidStatusChange(list[0])) &&
+        (list.size() < 2 || isValidStatusChange(list[1])) &&
+        (list.size() < 3 || isValidStatusChange(list[2])) &&
+        (list.size() < 4 || isValidStatusChange(list[3])) &&
+        (list.size() < 5 || isValidStatusChange(list[4])) &&
+        (list.size() < 6 || isValidStatusChange(list[5])) &&
+        (list.size() < 7 || isValidStatusChange(list[6])) &&
+        (list.size() < 8 || isValidStatusChange(list[7])) &&
+        (list.size() < 9 || isValidStatusChange(list[8])) &&
+        (list.size() < 10 || isValidStatusChange(list[9])) &&
+        (list.size() < 11 || isValidStatusChange(list[10])) &&
+        (list.size() < 12 || isValidStatusChange(list[11]));
+    }
+
+    function isValidNotificationChannels(nc) {
+      return nc is map &&
+        nc.keys().hasOnly(['inApp', 'email', 'whatsapp', 'aiCall']) &&
+        (!('inApp'    in nc) || nc.inApp    is bool) &&
+        (!('email'    in nc) || nc.email    is bool) &&
+        (!('whatsapp' in nc) || nc.whatsapp is bool) &&
+        (!('aiCall'   in nc) || nc.aiCall   is bool);
+    }
+
+    function isUrlOrEmpty(value) {
+      return value is string && value.size() <= 300 &&
+        (value.size() == 0 || value.matches('^https://.*') || value.matches('^http://.*'));
+    }
+
+    function optionalUuid(data, field) {
+      return !(field in data) || isUuid(data[field]);
+    }
+
+    function isUserRole(value) {
+      return value in ['admin', 'carrier', 'independent_operator', 'pricer'];
+    }
+
+    function isUserStatus(value) {
+      return value in ['pending_approval', 'approved', 'rejected', 'suspended'];
+    }
+
+    function isMexicanZoneItem(value) {
+      return value in ['Noroeste', 'Norte', 'Bajío', 'Centro Occidente', 'Centro', 'Sur', 'Sureste'];
+    }
+
+    function isMexicanZoneList(list) {
+      return list is list && list.size() <= 7 &&
+        (list.size() < 1 || isMexicanZoneItem(list[0])) &&
+        (list.size() < 2 || isMexicanZoneItem(list[1])) &&
+        (list.size() < 3 || isMexicanZoneItem(list[2])) &&
+        (list.size() < 4 || isMexicanZoneItem(list[3])) &&
+        (list.size() < 5 || isMexicanZoneItem(list[4])) &&
+        (list.size() < 6 || isMexicanZoneItem(list[5])) &&
+        (list.size() < 7 || isMexicanZoneItem(list[6]));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasOnly([
+          'uuid', 'uid', 'name', 'email', 'phone', 'phoneDigits', 'role', 'status',
+          'canNegotiateRates', 'handlesLTL', 'handlesLocal', 'handlesIntraState', 'companyId', 'routes', 'createdAt',
+          'coverageZones', 'coverageStates', 'coverageEquipmentTypes',
+          'coversUSA', 'coverageUSAStates',
+          'notificationEmails', 'whatsappNumbers', 'fcmToken', 'updatedAt', 'whatsappOptOut'
+        ]) &&
+        data.keys().hasAll([
+          'uuid', 'name', 'email', 'phone', 'role', 'status',
+          'canNegotiateRates', 'createdAt'
+        ]) &&
+        isUuid(data.uuid) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 80 &&
+        isValidEmail(data.email) &&
+        data.phone is string && data.phone.size() <= 30 &&
+        (!('phoneDigits' in data) || data.phoneDigits.matches('^\\d{10,15}$')) &&
+        isUserRole(data.role) &&
+        isUserStatus(data.status) &&
+        data.canNegotiateRates is bool &&
+        (!('handlesLTL' in data) || data.handlesLTL is bool) &&
+        (!('handlesLocal' in data) || data.handlesLocal is bool) &&
+        (!('handlesIntraState' in data) || data.handlesIntraState is bool) &&
+        (!('companyId' in data) || isUuid(data.companyId)) &&
+        (!('routes' in data) || isValidRoutes(data.routes)) &&
+        (!('coverageZones' in data) || isMexicanZoneList(data.coverageZones)) &&
+        (!('coverageStates' in data) || isZoneList(data.coverageStates)) &&
+        (!('coverageEquipmentTypes' in data) || isEquipmentList(data.coverageEquipmentTypes)) &&
+        (!('coversUSA' in data) || data.coversUSA is bool) &&
+        (!('coverageUSAStates' in data) || (data.coverageUSAStates is list && data.coverageUSAStates.size() <= 51)) &&
+        (!('notificationEmails' in data) || (data.notificationEmails is list && data.notificationEmails.size() <= 10)) &&
+        (!('whatsappNumbers' in data) || (data.whatsappNumbers is list && data.whatsappNumbers.size() <= 10)) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidPhoneRecord(data) {
+      return data.keys().hasOnly(['phoneDigits', 'uuid', 'name', 'role', 'status']) &&
+        data.keys().hasAll(['phoneDigits', 'uuid', 'name', 'role', 'status']) &&
+        data.phoneDigits is string && data.phoneDigits.matches('^\\d{10,15}$') &&
+        isUuid(data.uuid) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 80 &&
+        data.role in ['carrier', 'independent_operator'] &&
+        isUserStatus(data.status);
+    }
+
+    function isValidCompany(data) {
+      return data.keys().hasOnly([
+          'id', 'name', 'contactName', 'phone', 'email', 'rfc', 'status', 'createdAt'
+        ]) &&
+        data.keys().hasAll([
+          'id', 'name', 'contactName', 'phone', 'email', 'rfc', 'status', 'createdAt'
+        ]) &&
+        isUuid(data.id) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+        data.contactName is string && data.contactName.size() > 0 && data.contactName.size() <= 80 &&
+        data.phone is string && data.phone.size() >= 7 && data.phone.size() <= 30 &&
+        isValidEmail(data.email) &&
+        data.rfc is string && data.rfc.size() <= 20 &&
+        isUserStatus(data.status) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidLoad(data) {
+      return data.keys().hasOnly([
+          'id', 'reference', 'originCity', 'originState', 'destinationCity', 'destinationState',
+          'pickupDate', 'deliveryDate', 'equipmentType', 'unitCount', 'weightKg',
+          'merchandiseDescription', 'measurementsDescription', 'specialRequirements', 'offeredPrice', 'currency',
+          'includesVAT', 'maxAuthorizedPriceSinIVA', 'assignedPriceSinIVA', 'includedConcepts', 'allowedExtraExpenses',
+          'assignmentMode', 'deadline', 'minBidDecrement', 'observations', 'status',
+          'publishedBy', 'publishedAt', 'trackingUrl', 'statusHistory',
+          'clientContactName', 'clientContactPhone',
+          'exactPickupAddress', 'exactDeliveryAddress', 'assignedCarrierId', 'assignedUnitId',
+          'assignedOperatorId', 'unitETA', 'notificationChannels', 'confirmedUnitCount',
+          'confirmedCarrierIds'
+        ]) &&
+        data.keys().hasAll([
+          'id', 'reference', 'originCity', 'originState', 'destinationCity', 'destinationState',
+          'pickupDate', 'deliveryDate', 'equipmentType', 'unitCount', 'weightKg',
+          'merchandiseDescription', 'specialRequirements', 'offeredPrice', 'currency',
+          'includesVAT', 'includedConcepts', 'allowedExtraExpenses', 'assignmentMode',
+          'deadline', 'minBidDecrement', 'observations', 'status', 'publishedBy', 'publishedAt',
+          'trackingUrl', 'statusHistory', 'clientContactName', 'clientContactPhone',
+          'exactPickupAddress', 'exactDeliveryAddress'
+        ]) &&
+        isUuid(data.id) &&
+        data.reference is string && data.reference.size() > 0 && data.reference.size() <= 40 &&
+        data.originCity is string && data.originCity.size() > 0 && data.originCity.size() <= 80 &&
+        data.originState is string && data.originState.size() > 0 && data.originState.size() <= 40 &&
+        data.destinationCity is string && data.destinationCity.size() > 0 && data.destinationCity.size() <= 80 &&
+        data.destinationState is string && data.destinationState.size() > 0 && data.destinationState.size() <= 40 &&
+        data.pickupDate is timestamp &&
+        data.deliveryDate is timestamp &&
+        isEquipmentItem(data.equipmentType) &&
+        data.unitCount is int && data.unitCount >= 1 && data.unitCount <= 40 &&
+        data.weightKg is number && data.weightKg >= 0 && data.weightKg <= 200000 &&
+        data.merchandiseDescription is string && data.merchandiseDescription.size() <= 1000 &&
+        (!('measurementsDescription' in data) || (data.measurementsDescription is string && data.measurementsDescription.size() <= 2000)) &&
+        isRequirementList(data.specialRequirements) &&
+        isMoney(data.offeredPrice) &&
+        data.currency in ['MXN', 'USD'] &&
+        data.includesVAT is bool &&
+        (!('maxAuthorizedPriceSinIVA' in data) || isMoney(data.maxAuthorizedPriceSinIVA)) &&
+        (!('assignedPriceSinIVA' in data) || isMoney(data.assignedPriceSinIVA)) &&
+        data.includedConcepts is string && data.includedConcepts.size() <= 500 &&
+        data.allowedExtraExpenses is string && data.allowedExtraExpenses.size() <= 500 &&
+        data.assignmentMode in ['Tarifa Fija', 'Subasta Inversa', 'Confirmación Manual', 'Consolidada LTL'] &&
+        data.deadline is timestamp &&
+        isMoney(data.minBidDecrement) &&
+        data.observations is string && data.observations.size() <= 1000 &&
+        isLoadStatus(data.status) &&
+        isUuid(data.publishedBy) &&
+        data.publishedAt is timestamp &&
+        isUrlOrEmpty(data.trackingUrl) &&
+        isValidHistory(data.statusHistory) &&
+        data.clientContactName is string && data.clientContactName.size() <= 80 &&
+        data.clientContactPhone is string && data.clientContactPhone.size() <= 30 &&
+        data.exactPickupAddress is string && data.exactPickupAddress.size() <= 300 &&
+        data.exactDeliveryAddress is string && data.exactDeliveryAddress.size() <= 300 &&
+        optionalUuid(data, 'assignedCarrierId') &&
+        optionalUuid(data, 'assignedUnitId') &&
+        optionalUuid(data, 'assignedOperatorId') &&
+        (!('unitETA' in data) || data.unitETA is timestamp) &&
+        (!('notificationChannels' in data) || isValidNotificationChannels(data.notificationChannels)) &&
+        (!('confirmedUnitCount' in data) || (data.confirmedUnitCount is int && data.confirmedUnitCount >= 0 && data.confirmedUnitCount <= 40));
+    }
+
+    function loadChangedOnly(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    // Precio que el transportista puede dejar asentado al tomar una tarifa fija:
+    // hasta el máximo autorizado, o hasta la tarifa publicada si no hay máximo.
+    function tariffCeiling() {
+      return ('maxAuthorizedPriceSinIVA' in resource.data &&
+          resource.data.maxAuthorizedPriceSinIVA is number &&
+          resource.data.maxAuthorizedPriceSinIVA > resource.data.offeredPrice)
+        ? resource.data.maxAuthorizedPriceSinIVA
+        : resource.data.offeredPrice;
+    }
+
+    function agreedPriceWithinCeiling() {
+      return !('assignedPriceSinIVA' in request.resource.data) ||
+        (
+          'assignedPriceSinIVA' in resource.data &&
+          request.resource.data.assignedPriceSinIVA == resource.data.assignedPriceSinIVA
+        ) ||
+        (
+          isMoney(request.resource.data.assignedPriceSinIVA) &&
+          request.resource.data.assignedPriceSinIVA > 0 &&
+          request.resource.data.assignedPriceSinIVA <= tariffCeiling()
+        );
+    }
+
+    function isTakingLoad() {
+      return isApproved() &&
+        resource.data.status == 'Publicado' &&
+        loadChangedOnly([
+          'status', 'assignedCarrierId', 'assignedUnitId', 'assignedOperatorId',
+          'unitETA', 'trackingUrl', 'statusHistory', 'confirmedUnitCount', 'confirmedCarrierIds',
+          'assignedPriceSinIVA'
+        ]) &&
+        agreedPriceWithinCeiling() &&
+        (
+          // Asignación completa: carga queda totalmente asignada a este transportista
+          (request.resource.data.status == 'Asignado' &&
+           request.resource.data.assignedCarrierId == callerUuid()) ||
+          // Confirmación parcial multi-unidad: status sigue Publicado, el contador sube
+          (request.resource.data.status == 'Publicado' &&
+           resource.data.unitCount > 1 &&
+           request.resource.data.confirmedUnitCount > resource.data.confirmedUnitCount &&
+           request.resource.data.confirmedCarrierIds.hasAll([callerUuid()]))
+        );
+    }
+
+    function isAssignedToCaller() {
+      return ('assignedCarrierId' in resource.data && resource.data.assignedCarrierId == callerUuid()) ||
+        ('assignedOperatorId' in resource.data && resource.data.assignedOperatorId == callerUuid());
+    }
+
+    function isTripUpdate() {
+      return isApproved() &&
+        isAssignedToCaller() &&
+        request.resource.data.assignedCarrierId == resource.data.assignedCarrierId &&
+        loadStep(request.resource.data.status) > loadStep(resource.data.status) &&
+        loadChangedOnly(['status', 'statusHistory', 'trackingUrl', 'unitETA']);
+    }
+
+    function isValidUnit(data) {
+      return data.keys().hasOnly([
+          'id', 'ownerId', 'equipmentType', 'plates', 'trailerNumber', 'currentLocation',
+          'operatorName', 'scac', 'caat', 'availableFrom', 'coverageZones', 'status',
+          'notes', 'operatorId'
+        ]) &&
+        data.keys().hasAll([
+          'id', 'ownerId', 'equipmentType', 'plates', 'trailerNumber', 'currentLocation',
+          'operatorName', 'scac', 'caat', 'availableFrom', 'coverageZones', 'status', 'notes'
+        ]) &&
+        isUuid(data.id) &&
+        isUuid(data.ownerId) &&
+        isEquipmentItem(data.equipmentType) &&
+        data.plates is string && data.plates.size() <= 20 &&
+        data.trailerNumber is string && data.trailerNumber.size() <= 30 &&
+        data.currentLocation is string && data.currentLocation.size() <= 80 &&
+        data.operatorName is string && data.operatorName.size() <= 80 &&
+        data.scac is string && data.scac.size() <= 10 &&
+        data.caat is string && data.caat.size() <= 20 &&
+        data.availableFrom is timestamp &&
+        isZoneList(data.coverageZones) &&
+        data.status in ['Disponible', 'Reservada', 'En viaje', 'Fuera de servicio'] &&
+        data.notes is string && data.notes.size() <= 500 &&
+        optionalUuid(data, 'operatorId');
+    }
+
+    function ownsUnit(data) {
+      return data.ownerId == callerUuid() ||
+        ('companyId' in callerData() && data.ownerId == callerData().companyId);
+    }
+
+    function isOfferStatus(value) {
+      return value in ['Activa', 'Ganando', 'Superada', 'Ganadora', 'Perdida', 'Cancelada', 'Rechazada', 'PendienteAprobacion'];
+    }
+
+    function isValidOffer(data) {
+      return data.keys().hasOnly([
+          'id', 'loadId', 'carrierId', 'carrierName', 'amount', 'currency',
+          'isAvailabilityOnly', 'status', 'submittedAt', 'notes',
+          'unitId', 'operatorId', 'proposedPrice', 'availableUnitCount'
+        ]) &&
+        data.keys().hasAll([
+          'id', 'loadId', 'carrierId', 'carrierName', 'amount', 'currency',
+          'isAvailabilityOnly', 'status', 'submittedAt', 'notes'
+        ]) &&
+        isUuid(data.id) &&
+        isUuid(data.loadId) &&
+        isUuid(data.carrierId) &&
+        data.carrierName is string && data.carrierName.size() > 0 && data.carrierName.size() <= 80 &&
+        isMoney(data.amount) &&
+        data.currency in ['MXN', 'USD'] &&
+        data.isAvailabilityOnly is bool &&
+        isOfferStatus(data.status) &&
+        data.submittedAt is timestamp &&
+        data.notes is string && data.notes.size() <= 500 &&
+        optionalUuid(data, 'unitId') &&
+        optionalUuid(data, 'operatorId') &&
+        (!('proposedPrice' in data) || isMoney(data.proposedPrice)) &&
+        (!('availableUnitCount' in data) || (data.availableUnitCount is int && data.availableUnitCount >= 1 && data.availableUnitCount <= 40));
+    }
+
+    function isNotificationType(value) {
+      return value in [
+        'new_load', 'outbid', 'auction_closing_soon', 'load_assigned',
+        'load_cancelled', 'status_changed', 'registration_approved', 'registration_rejected'
+      ];
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasOnly([
+          'id', 'userId', 'type', 'title', 'body', 'isRead', 'createdAt', 'loadId'
+        ]) &&
+        data.keys().hasAll(['id', 'userId', 'type', 'title', 'body', 'isRead', 'createdAt']) &&
+        isUuid(data.id) &&
+        isUuid(data.userId) &&
+        isNotificationType(data.type) &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 120 &&
+        data.body is string && data.body.size() > 0 && data.body.size() <= 500 &&
+        data.isRead is bool &&
+        data.createdAt is timestamp &&
+        optionalUuid(data, 'loadId');
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || isOwner(userId) || isPricer();
+      allow create: if isOwner(userId) &&
+        isValidUser(request.resource.data) &&
+        uidUnchanged() &&
+        request.resource.data.role in ['carrier', 'independent_operator'] &&
+        request.resource.data.status == 'pending_approval' &&
+        isPlausibleClientTime(request.resource.data.createdAt);
+      // Admin: puede cambiar solo el status
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+        isUserStatus(request.resource.data.status);
+      // Admin: puede asignar/cambiar pricer de un transportista
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pricerId']) &&
+        (!('pricerId' in request.resource.data) || isUuid(request.resource.data.pricerId));
+      // Dueño: puede actualizar rutas y preferencias de perfil
+      allow update: if isOwner(userId) &&
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'routes', 'handlesLTL', 'handlesLocal', 'handlesIntraState',
+          'coverageZones', 'coverageStates', 'coverageEquipmentTypes',
+          'coversUSA', 'coverageUSAStates',
+          'notificationEmails', 'whatsappNumbers'
+        ]);
+      allow delete: if isAdmin() || isOwner(userId);
+    }
+
+    match /users_by_phone/{phoneDigits} {
+      allow get: if isAdmin() || isApproved();
+      allow list: if false;
+      allow create: if isSignedIn() &&
+        isValidPhoneRecord(request.resource.data) &&
+        phoneDigits.matches('^\\d{10,15}$') &&
+        request.resource.data.phoneDigits == phoneDigits &&
+        request.resource.data.uuid == callerUuid() &&
+        request.resource.data.role == callerData().role &&
+        request.resource.data.name == callerData().name &&
+        request.resource.data.status == 'pending_approval';
+      allow update: if isAdmin() &&
+        isValidPhoneRecord(request.resource.data) &&
+        request.resource.data.phoneDigits == resource.data.phoneDigits &&
+        request.resource.data.uuid == resource.data.uuid &&
+        request.resource.data.name == resource.data.name &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin() || resource.data.uuid == callerUuid();
+    }
+
+    match /companies/{companyId} {
+      allow read: if isAdmin() || isPricer() ||
+        (isSignedIn() && 'companyId' in callerData() && callerData().companyId == companyId);
+      allow create: if isSignedIn() &&
+        isValidCompany(request.resource.data) &&
+        request.resource.data.id == companyId &&
+        request.resource.data.status == 'pending_approval' &&
+        isPlausibleClientTime(request.resource.data.createdAt);
+      allow update: if isAdmin() &&
+        isValidCompany(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin() ||
+        (isSignedIn() && 'companyId' in callerData() && callerData().companyId == companyId);
+    }
+
+    match /loads/{loadId} {
+      allow read: if isAdmin() || isApproved();
+      allow create: if isAdminOrPricer();
+      allow update: if
+        request.resource.data.id == loadId &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.publishedBy == resource.data.publishedBy &&
+        request.resource.data.publishedAt == resource.data.publishedAt &&
+        request.resource.data.reference == resource.data.reference &&
+        (
+          // Admin o pricer: validación completa del documento
+          (isAdminOrPricer() && isValidLoad(request.resource.data)) ||
+          // Carrier confirma unidades: solo campos del diff están restringidos por isTakingLoad
+          isTakingLoad() ||
+          // Carrier actualiza estado del viaje en progreso
+          isTripUpdate()
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /units/{unitId} {
+      allow read: if isAdmin() || isApproved();
+      allow create: if isApproved() &&
+        isValidUnit(request.resource.data) &&
+        request.resource.data.id == unitId &&
+        ownsUnit(request.resource.data);
+      allow update: if isValidUnit(request.resource.data) &&
+        request.resource.data.id == unitId &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.ownerId == resource.data.ownerId &&
+        (
+          isAdmin() ||
+          (isApproved() && ownsUnit(resource.data)) ||
+          (isApproved() &&
+            'operatorId' in resource.data &&
+            resource.data.operatorId == callerUuid() &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentLocation']))
+        );
+      allow delete: if isAdmin() || (isApproved() && ownsUnit(resource.data));
+    }
+
+    match /offers/{offerId} {
+      allow read: if isAdmin() || isApproved();
+      allow create: if isApproved() &&
+        isValidOffer(request.resource.data) &&
+        request.resource.data.id == offerId &&
+        request.resource.data.carrierId == callerUuid() &&
+        request.resource.data.status in ['Activa', 'Ganando', 'Ganadora', 'PendienteAprobacion'] &&
+        isPlausibleClientTime(request.resource.data.submittedAt);
+      allow update: if isValidOffer(request.resource.data) &&
+        request.resource.data.id == offerId &&
+        request.resource.data.carrierId == resource.data.carrierId &&
+        request.resource.data.loadId == resource.data.loadId &&
+        request.resource.data.submittedAt == resource.data.submittedAt &&
+        (isAdmin() || isApproved()) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      // El dueño puede corregir el precio de su tarifa mientras la oferta sigue abierta.
+      // No puede cambiar de quién es, de qué carga, ni el estado.
+      allow update: if isApproved() &&
+        resource.data.carrierId == callerUuid() &&
+        isValidOffer(request.resource.data) &&
+        request.resource.data.id == offerId &&
+        request.resource.data.carrierId == resource.data.carrierId &&
+        request.resource.data.loadId == resource.data.loadId &&
+        request.resource.data.submittedAt == resource.data.submittedAt &&
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.currency == resource.data.currency &&
+        request.resource.data.carrierName == resource.data.carrierName &&
+        request.resource.data.isAvailabilityOnly == resource.data.isAvailabilityOnly &&
+        request.resource.data.notes == resource.data.notes &&
+        resource.data.status in ['Activa', 'Ganando', 'Superada', 'PendienteAprobacion'] &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'amount', 'proposedPrice', 'availableUnitCount'
+        ]) &&
+        isMoney(request.resource.data.amount) &&
+        request.resource.data.amount > 0 &&
+        request.resource.data.availableUnitCount is int &&
+        request.resource.data.availableUnitCount >= 1 &&
+        request.resource.data.availableUnitCount <= 40 &&
+        (
+          !('proposedPrice' in request.resource.data) ||
+          (
+            isMoney(request.resource.data.proposedPrice) &&
+            request.resource.data.proposedPrice > 0 &&
+            request.resource.data.amount <=
+              request.resource.data.proposedPrice * request.resource.data.availableUnitCount + 1 &&
+            request.resource.data.amount + 1 >=
+              request.resource.data.proposedPrice * request.resource.data.availableUnitCount
+          )
+        );
+      allow delete: if isAdmin() || resource.data.carrierId == callerUuid();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() || resource.data.userId == callerUuid();
+      allow create: if (isAdmin() || isApproved()) &&
+        isValidNotification(request.resource.data) &&
+        request.resource.data.id == notificationId &&
+        request.resource.data.isRead == false &&
+        isPlausibleClientTime(request.resource.data.createdAt);
+      allow update: if isValidNotification(request.resource.data) &&
+        request.resource.data.id == notificationId &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.type == resource.data.type &&
+        (
+          (resource.data.userId == callerUuid() &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']) &&
+            request.resource.data.isRead == true) ||
+          isAdmin()
+        );
+      allow delete: if isAdmin() || resource.data.userId == callerUuid();
+    }
+
+    // ── carrier_preprofiles ─────────────────────────────────────────────────
+    // Perfiles pre-llenados desde el directorio de transportistas.
+    // Lectura pública (GET por teléfono) — datos de directorio empresarial.
+    // Admin puede crear (invitación manual) y actualizar status.
+    match /carrier_preprofiles/{phone} {
+      allow get: if true;
+      allow list: if isAdmin();
+      // Admin puede crear nuevos perfiles (invitación manual)
+      allow create: if isAdmin();
+      // Admin puede actualizar datos del perfil y campos de invitación
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /invitations/{inviteId} {
+      // Permite invitaciones por teléfono, correo, o ambos
+      allow create: if isAdmin() &&
+        request.resource.data.keys().hasAll(['name', 'createdAt', 'status', 'createdBy']) &&
+        request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 80 &&
+        (
+          (request.resource.data.keys().hasAll(['phone']) &&
+           request.resource.data.phone is string && request.resource.data.phone.size() > 0) ||
+          (request.resource.data.keys().hasAll(['email']) &&
+           request.resource.data.email is string && request.resource.data.email.size() > 0)
+        ) &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt is timestamp;
+      allow read, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

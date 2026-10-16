@@ -42,6 +42,17 @@ export function toDatetimeLocalValue(d: Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/** Phone keyboards may send 18500, 18500.50 or 18,500.50. */
+export function parseTariff(text: string): number | null {
+  const cleaned = text.replace(/[^\d.,]/g, '');
+  if (!cleaned) return null;
+  let normalized = cleaned;
+  if (cleaned.includes('.') && cleaned.includes(',')) normalized = cleaned.replace(/,/g, '');
+  else if (cleaned.includes(',')) normalized = cleaned.replace(',', '.');
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
 /** Parse a datetime-local value as local time. `new Date(string)` rejects this format on iOS Safari. */
 export function fromDatetimeLocalValue(value: string): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(value.trim());
