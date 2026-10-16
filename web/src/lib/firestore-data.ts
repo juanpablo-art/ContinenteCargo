@@ -10,6 +10,7 @@ import {
   getDocs,
   getDoc,
   deleteField,
+  runTransaction,
   Timestamp,
   type DocumentData,
   type Unsubscribe,
@@ -401,6 +402,99 @@ export function parseCompany(data: DocumentData): TransportCompany | null {
 
 export async function saveLoad(load: Load): Promise<void> {
   await setDoc(doc(db, 'loads', load.id), loadToData(load));
+}
+
+export type CarrierTakeOutcome =
+  | { ok: true; units: number; confirmedUnitCount: number; full: boolean }
+  | { ok: false; reason: 'notEnough'; available: number }
+  | { ok: false; reason: 'closed' | 'noUnit' };
+
+/**
+ * Confirms only as many units as are still free. A request above the remainder
+ * is rejected instead of being trimmed, so the carrier is not told they took more
+ * than the load had left.
+ */
+export async function commitCarrierTake(input: {
+  loadId: string;
+  requestedUnits: number;
+  carrierId: string;
+  carrierName: string;
+  offer: Offer;
+  unitId?: string;
+  operatorId?: string;
+  unitETA?: Date;
+  trackingUrl: string;
+  agreedPrice: number;
+}): Promise<CarrierTakeOutcome> {
+  const requested = Math.round(input.requestedUnits);
+  if (!Number.isInteger(requested) || requested < 1) {
+    return { ok: false, reason: 'notEnough', available: 0 };
+  }
+
+  return runTransaction(db, async (transaction) => {
+    const loadRef = doc(db, 'loads', input.loadId);
+    const offerRef = doc(db, 'offers', input.offer.id);
+    const unitRef = input.unitId ? doc(db, 'units', input.unitId) : null;
+    const loadSnap = await transaction.get(loadRef);
+    const unitSnap = unitRef ? await transaction.get(unitRef) : null;
+    if (!loadSnap.exists()) return { ok: false, reason: 'closed' };
+    const data = loadSnap.data();
+    if (data.status !== 'Publicado') return { ok: false, reason: 'closed' };
+    const deadline = data.deadline instanceof Timestamp ? data.deadline.toDate() : null;
+    if (!deadline || deadline <= new Date()) return { ok: false, reason: 'closed' };
+
+    const total = typeof data.unitCount === 'number' ? data.unitCount : 1;
+    const confirmed = typeof data.confirmedUnitCount === 'number' ? data.confirmedUnitCount : 0;
+    const available = total - confirmed;
+    if (available <= 0 || requested > available) {
+      return { ok: false, reason: 'notEnough', available: Math.max(0, available) };
+    }
+
+    if (unitRef) {
+      if (!unitSnap?.exists() || unitSnap.data().status !== 'Disponible') {
+        return { ok: false, reason: 'noUnit' };
+      }
+    }
+
+    const newConfirmed = confirmed + requested;
+    const full = newConfirmed >= total;
+    const carriers = Array.isArray(data.confirmedCarrierIds)
+      ? [...(data.confirmedCarrierIds as string[])]
+      : [];
+    if (!carriers.includes(input.carrierId)) carriers.push(input.carrierId);
+    const history = Array.isArray(data.statusHistory) ? [...data.statusHistory] : [];
+    history.push({
+      id: input.offer.id,
+      status: full ? 'Asignado' : 'Publicado',
+      changedBy: input.carrierId,
+      changedByName: input.carrierName,
+      changedAt: Timestamp.fromDate(new Date()),
+      notes: full
+        ? `Todas las unidades confirmadas (${newConfirmed}/${total})`
+        : `Unidad confirmada (${newConfirmed}/${total})`,
+    });
+
+    const fields: DocumentData = {
+      confirmedCarrierIds: carriers,
+      confirmedUnitCount: newConfirmed,
+      statusHistory: history,
+      trackingUrl: input.trackingUrl,
+      assignedPriceSinIVA: input.agreedPrice,
+    };
+    if (input.unitId) fields.assignedUnitId = input.unitId;
+    if (input.operatorId) fields.assignedOperatorId = input.operatorId;
+    if (input.unitETA && !Number.isNaN(input.unitETA.getTime())) {
+      fields.unitETA = Timestamp.fromDate(input.unitETA);
+    }
+    if (full) {
+      fields.status = 'Asignado';
+      fields.assignedCarrierId = input.carrierId;
+    }
+
+    transaction.update(loadRef, fields);
+    transaction.set(offerRef, offerToData({ ...input.offer, availableUnitCount: requested }));
+    return { ok: true, units: requested, confirmedUnitCount: newConfirmed, full };
+  });
 }
 
 /** Carrier confirmation — updateData only so backend fields are preserved. */

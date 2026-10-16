@@ -18,8 +18,8 @@ import {
   saveOffer,
   saveUnit,
   updateLoadFields,
-  updateLoadForCarrierConfirmation,
   updateLoadStatusFields,
+  commitCarrierTake,
   updateNotificationFields,
   updateOfferFields,
   updateUnitFields,
@@ -54,6 +54,7 @@ export type TakeLoadResult =
   | 'notApproved'
   | 'deadlinePassed'
   | 'noUnit'
+  | 'notEnoughUnits'
   | 'pendingApproval';
 
 export type BidResult =
@@ -544,6 +545,11 @@ export const useDataStore = defineStore('data', {
         return 'alreadyAssigned';
       }
 
+      const requestedUnits = Math.round(opts.availableUnitCount ?? 1);
+      if (!Number.isInteger(requestedUnits) || requestedUnits < 1) return 'notEnoughUnits';
+      const remainingNow = load.unitCount - load.confirmedUnitCount;
+      if (remainingNow <= 0 || requestedUnits > remainingNow) return 'notEnoughUnits';
+
       let optUnitIdx: number | undefined;
       if (opts.unitId) {
         const idx = this.units.findIndex((u) => u.id === opts.unitId);
@@ -557,53 +563,10 @@ export const useDataStore = defineStore('data', {
         optUnitIdx = idx;
       }
 
-      const availableUnitCount = opts.availableUnitCount ?? 1;
-      if (!this.loads[loadIdx].confirmedCarrierIds.includes(user.uuid)) {
-        this.loads[loadIdx].confirmedCarrierIds = [
-          ...this.loads[loadIdx].confirmedCarrierIds,
-          user.uuid,
-        ];
-      }
-      const remaining =
-        this.loads[loadIdx].unitCount - this.loads[loadIdx].confirmedUnitCount;
-      this.loads[loadIdx].confirmedUnitCount += Math.min(
-        availableUnitCount,
-        Math.max(1, remaining),
-      );
-
-      if (opts.unitId) this.loads[loadIdx].assignedUnitId = opts.unitId;
-      this.loads[loadIdx].assignedOperatorId = opts.operatorId;
-      this.loads[loadIdx].unitETA = opts.unitETA;
-      this.loads[loadIdx].trackingUrl = opts.trackingUrl ?? '';
       const agreedPrice =
         opts.proposedPricePerUnit != null && opts.proposedPricePerUnit > 0
           ? opts.proposedPricePerUnit
           : load.offeredPrice;
-      this.loads[loadIdx].assignedPriceSinIVA = agreedPrice;
-      if (optUnitIdx != null) this.units[optUnitIdx].status = 'Reservada';
-
-      if (loadIsFull(this.loads[loadIdx])) {
-        this.loads[loadIdx].status = 'Asignado';
-        this.loads[loadIdx].assignedCarrierId = user.uuid;
-        this.loads[loadIdx].statusHistory.push(
-          makeStatusChange(
-            'Asignado',
-            user.uuid,
-            user.name,
-            `Todas las unidades confirmadas (${this.loads[loadIdx].unitCount}/${this.loads[loadIdx].unitCount})`,
-          ),
-        );
-      } else {
-        this.loads[loadIdx].statusHistory.push(
-          makeStatusChange(
-            'Publicado',
-            user.uuid,
-            user.name,
-            `Unidad confirmada (${this.loads[loadIdx].confirmedUnitCount}/${this.loads[loadIdx].unitCount})`,
-          ),
-        );
-      }
-
       const wonOffer: Offer = {
         id: newUuid(),
         loadId: opts.loadId,
@@ -614,25 +577,70 @@ export const useDataStore = defineStore('data', {
         currency: load.currency,
         isAvailabilityOnly: false,
         proposedPrice: agreedPrice,
-        availableUnitCount,
+        availableUnitCount: requestedUnits,
         status: 'Ganadora',
         submittedAt: new Date(),
         notes: '',
       };
-      this.offers.push(wonOffer);
-
-      const isMultiUnit = this.loads[loadIdx].unitCount > 1;
-      if (loadIsFull(this.loads[loadIdx]) || isMultiUnit) {
-        await updateLoadForCarrierConfirmation(this.loads[loadIdx]);
+      const outcome = await commitCarrierTake({
+        loadId: opts.loadId,
+        requestedUnits,
+        carrierId: user.uuid,
+        carrierName: user.name,
+        offer: wonOffer,
+        unitId: opts.unitId,
+        operatorId: opts.operatorId,
+        unitETA: opts.unitETA,
+        trackingUrl: opts.trackingUrl ?? '',
+        agreedPrice,
+      });
+      if (!outcome.ok) {
+        if (outcome.reason === 'noUnit') return 'noUnit';
+        if (outcome.reason === 'notEnough') {
+          this.loads[loadIdx].confirmedUnitCount =
+            this.loads[loadIdx].unitCount - outcome.available;
+          return 'notEnoughUnits';
+        }
+        return 'alreadyAssigned';
       }
-      if (optUnitIdx != null) await saveUnit(this.units[optUnitIdx]);
-      await saveOffer(wonOffer);
+
+      if (!this.loads[loadIdx].confirmedCarrierIds.includes(user.uuid)) {
+        this.loads[loadIdx].confirmedCarrierIds = [
+          ...this.loads[loadIdx].confirmedCarrierIds,
+          user.uuid,
+        ];
+      }
+      this.loads[loadIdx].confirmedUnitCount = outcome.confirmedUnitCount;
+      if (opts.unitId) this.loads[loadIdx].assignedUnitId = opts.unitId;
+      this.loads[loadIdx].assignedOperatorId = opts.operatorId;
+      this.loads[loadIdx].unitETA = opts.unitETA;
+      this.loads[loadIdx].trackingUrl = opts.trackingUrl ?? '';
+      this.loads[loadIdx].assignedPriceSinIVA = agreedPrice;
+      this.loads[loadIdx].statusHistory.push(
+        makeStatusChange(
+          outcome.full ? 'Asignado' : 'Publicado',
+          user.uuid,
+          user.name,
+          outcome.full
+            ? `Todas las unidades confirmadas (${outcome.confirmedUnitCount}/${this.loads[loadIdx].unitCount})`
+            : `Unidad confirmada (${outcome.confirmedUnitCount}/${this.loads[loadIdx].unitCount})`,
+        ),
+      );
+      if (outcome.full) {
+        this.loads[loadIdx].status = 'Asignado';
+        this.loads[loadIdx].assignedCarrierId = user.uuid;
+      }
+      if (optUnitIdx != null) {
+        this.units[optUnitIdx].status = 'Reservada';
+        await saveUnit(this.units[optUnitIdx]);
+      }
+      this.offers.push(wonOffer);
 
       await this.notify(
         user.uuid,
         'load_assigned',
         '¡Participación confirmada!',
-        `Confirmaste tu unidad para el viaje ${load.reference}.`,
+        `Confirmaste ${outcome.units} de ${this.loads[loadIdx].unitCount} unidades para el viaje ${load.reference}.`,
         opts.loadId,
       );
 
@@ -655,6 +663,11 @@ export const useDataStore = defineStore('data', {
       if (!load) return 'noUnit';
       if (load.status !== 'Publicado') return 'alreadyAssigned';
       if (new Date() >= load.deadline) return 'deadlinePassed';
+      const requestedUnits = Math.round(opts.availableUnitCount);
+      const remaining = load.unitCount - load.confirmedUnitCount;
+      if (!Number.isInteger(requestedUnits) || requestedUnits < 1 || requestedUnits > remaining) {
+        return 'notEnoughUnits';
+      }
 
       const offer: Offer = {
         id: newUuid(),
@@ -663,11 +676,11 @@ export const useDataStore = defineStore('data', {
         carrierName: user.name,
         unitId: opts.unitId,
         operatorId: opts.operatorId,
-        amount: opts.proposedPricePerUnit * opts.availableUnitCount,
+        amount: opts.proposedPricePerUnit * requestedUnits,
         currency: load.currency,
         isAvailabilityOnly: false,
         proposedPrice: opts.proposedPricePerUnit,
-        availableUnitCount: opts.availableUnitCount,
+        availableUnitCount: requestedUnits,
         status: 'PendienteAprobacion',
         submittedAt: new Date(),
         notes: opts.trackingUrl ? `Rastreo: ${opts.trackingUrl}` : '',
@@ -685,17 +698,23 @@ export const useDataStore = defineStore('data', {
       if (loadIdx < 0) return;
       const auth = useAuthStore();
 
-      this.offers[offerIdx].status = 'Ganadora';
-      this.loads[loadIdx].assignedPriceSinIVA =
-        offer.proposedPrice ?? offer.amount;
-
       const remaining =
         this.loads[loadIdx].unitCount - this.loads[loadIdx].confirmedUnitCount;
-      const unitsToConfirm = Math.min(offer.availableUnitCount, Math.max(1, remaining));
-      this.loads[loadIdx].confirmedCarrierIds = [
-        ...this.loads[loadIdx].confirmedCarrierIds,
-        offer.carrierId,
-      ];
+      if (remaining <= 0) return;
+      const requested = offer.availableUnitCount;
+      const unitsToConfirm = Math.min(requested, remaining);
+      this.offers[offerIdx].status = 'Ganadora';
+      if (unitsToConfirm < requested) {
+        this.offers[offerIdx].availableUnitCount = unitsToConfirm;
+      }
+      this.loads[loadIdx].assignedPriceSinIVA =
+        offer.proposedPrice ?? offer.amount;
+      if (!this.loads[loadIdx].confirmedCarrierIds.includes(offer.carrierId)) {
+        this.loads[loadIdx].confirmedCarrierIds = [
+          ...this.loads[loadIdx].confirmedCarrierIds,
+          offer.carrierId,
+        ];
+      }
       this.loads[loadIdx].confirmedUnitCount += unitsToConfirm;
       if (offer.unitId) this.loads[loadIdx].assignedUnitId = offer.unitId;
       this.loads[loadIdx].assignedOperatorId = offer.operatorId;
@@ -723,12 +742,19 @@ export const useDataStore = defineStore('data', {
       }
 
       await saveLoad(this.loads[loadIdx]);
-      await updateOfferFields(offerId, { status: 'Ganadora' });
+      await updateOfferFields(
+        offerId,
+        unitsToConfirm < requested
+          ? { status: 'Ganadora', availableUnitCount: unitsToConfirm }
+          : { status: 'Ganadora' },
+      );
       await this.notify(
         offer.carrierId,
         'load_assigned',
         '¡Propuesta aprobada!',
-        'Tu contra-oferta para el viaje fue aprobada.',
+        unitsToConfirm < requested
+          ? `Se aprobaron ${unitsToConfirm} de ${requested} unidades. Solo esas seguían disponibles.`
+          : 'Tu contra-oferta para el viaje fue aprobada.',
         offer.loadId,
       );
     },

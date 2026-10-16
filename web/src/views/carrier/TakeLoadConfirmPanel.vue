@@ -27,7 +27,7 @@ const isConfirming = ref(false);
 const error = ref('');
 
 const maxPositionable = computed(() =>
-  Math.max(1, props.load.unitCount - props.load.confirmedUnitCount),
+  Math.max(0, props.load.unitCount - props.load.confirmedUnitCount),
 );
 
 const availableUnits = computed(() =>
@@ -55,6 +55,15 @@ const needsAdminApproval = computed(() => {
 });
 
 const canConfirm = computed(() => {
+  const count = availableUnitCount.value;
+  if (
+    maxPositionable.value < 1 ||
+    !Number.isInteger(count) ||
+    count < 1 ||
+    count > maxPositionable.value
+  ) {
+    return false;
+  }
   if (props.load.unitCount > 1) return true;
   return Boolean(selectedUnitId.value);
 });
@@ -142,6 +151,8 @@ function resultTitle(r: TakeLoadResult) {
       return 'Cuenta no aprobada';
     case 'noUnit':
       return 'Unidad no válida';
+    case 'notEnoughUnits':
+      return 'No quedan suficientes unidades';
     default:
       return 'Resultado';
   }
@@ -150,11 +161,19 @@ function resultTitle(r: TakeLoadResult) {
 function resultBody(r: TakeLoadResult) {
   switch (r) {
     case 'success':
-      return 'Confirmaste tu unidad para este viaje.';
+      return props.load.unitCount > 1
+        ? `Confirmaste ${availableUnitCount.value} de ${props.load.unitCount} unidades.`
+        : 'Confirmaste tu unidad para este viaje.';
     case 'pendingApproval':
       return 'Tu contra-oferta requiere aprobación del administrador.';
     case 'alreadyAssigned':
       return 'Esta carga ya fue tomada o está completa.';
+    case 'notEnoughUnits':
+      if (maxPositionable.value <= 0) return 'Ya no quedan unidades disponibles.';
+      if (maxPositionable.value === 1) {
+        return `Solo queda 1 unidad de ${props.load.unitCount}. Elige esa cantidad.`;
+      }
+      return `Solo quedan ${maxPositionable.value} de ${props.load.unitCount} unidades. Elige una cantidad dentro de ese límite.`;
     case 'deadlinePassed':
       return 'El plazo para participar ya cerró.';
     case 'notApproved':
@@ -217,7 +236,9 @@ function resultBody(r: TakeLoadResult) {
       </div>
 
       <div v-if="load.unitCount > 1">
-        <label class="cc-label" for="take-count">Unidades que aportas (máx. {{ maxPositionable }})</label>
+        <label class="cc-label" for="take-count">
+          Unidades que aportas (máx. {{ maxPositionable }} de {{ load.unitCount }})
+        </label>
         <input
           id="take-count"
           v-model.number="availableUnitCount"
@@ -226,6 +247,15 @@ function resultBody(r: TakeLoadResult) {
           :max="maxPositionable"
           class="cc-field"
         />
+        <p v-if="maxPositionable < 1" class="mt-2 text-xs font-medium text-danger">
+          Ya no quedan unidades disponibles.
+        </p>
+        <p
+          v-else-if="availableUnitCount > maxPositionable"
+          class="mt-2 text-xs font-medium text-danger"
+        >
+          Solo quedan {{ maxPositionable }} de {{ load.unitCount }}.
+        </p>
       </div>
 
       <div>

@@ -436,7 +436,12 @@ service cloud.firestore {
         optionalUuid(data, 'assignedOperatorId') &&
         (!('unitETA' in data) || data.unitETA is timestamp) &&
         (!('notificationChannels' in data) || isValidNotificationChannels(data.notificationChannels)) &&
-        (!('confirmedUnitCount' in data) || (data.confirmedUnitCount is int && data.confirmedUnitCount >= 0 && data.confirmedUnitCount <= 40));
+        (!('confirmedUnitCount' in data) || (
+          data.confirmedUnitCount is int &&
+          data.confirmedUnitCount >= 0 &&
+          data.confirmedUnitCount <= data.unitCount &&
+          data.confirmedUnitCount <= 40
+        ));
     }
 
     function loadChangedOnly(fields) {
@@ -466,9 +471,17 @@ service cloud.firestore {
         );
     }
 
+    function confirmedUnitsStayInRange() {
+      return request.resource.data.unitCount == resource.data.unitCount &&
+        request.resource.data.confirmedUnitCount is int &&
+        request.resource.data.confirmedUnitCount >= 0 &&
+        request.resource.data.confirmedUnitCount <= resource.data.unitCount;
+    }
+
     function isTakingLoad() {
       return isApproved() &&
         resource.data.status == 'Publicado' &&
+        confirmedUnitsStayInRange() &&
         loadChangedOnly([
           'status', 'assignedCarrierId', 'assignedUnitId', 'assignedOperatorId',
           'unitETA', 'trackingUrl', 'statusHistory', 'confirmedUnitCount', 'confirmedCarrierIds',
@@ -730,6 +743,19 @@ service cloud.firestore {
         request.resource.data.submittedAt == resource.data.submittedAt &&
         (isAdmin() || isApproved()) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      // Al aprobar una contra-oferta, el admin puede bajar las unidades al cupo que sigue libre.
+      allow update: if isAdmin() &&
+        isValidOffer(request.resource.data) &&
+        request.resource.data.id == offerId &&
+        request.resource.data.carrierId == resource.data.carrierId &&
+        request.resource.data.loadId == resource.data.loadId &&
+        request.resource.data.submittedAt == resource.data.submittedAt &&
+        resource.data.status == 'PendienteAprobacion' &&
+        request.resource.data.status == 'Ganadora' &&
+        request.resource.data.availableUnitCount is int &&
+        request.resource.data.availableUnitCount >= 1 &&
+        request.resource.data.availableUnitCount < resource.data.availableUnitCount &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'availableUnitCount']);
       // El dueño puede corregir el precio de su tarifa mientras la oferta sigue abierta.
       // No puede cambiar de quién es, de qué carga, ni el estado.
       allow update: if isApproved() &&
