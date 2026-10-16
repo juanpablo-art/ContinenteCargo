@@ -19,9 +19,11 @@ import type {
   AppUser,
   CarrierRoute,
   EquipmentType,
+  TransportCompany,
   UserRole,
 } from '@/lib/models';
 import { newUuid } from '@/lib/models';
+import { createUserProfileViaFunction } from '@/lib/registration';
 
 function dataStore() {
   // Lazy import avoids circular dependency with stores/data.ts
@@ -40,6 +42,12 @@ export interface RegisterPayload {
   coverageStates: string[];
   coverageEquipmentTypes: EquipmentType[];
   handlesLTL: boolean;
+  handlesLocal: boolean;
+  handlesIntraState: boolean;
+  coversUSA: boolean;
+  coverageUSAStates: string[];
+  notificationEmails: string[];
+  whatsappNumbers: string[];
 }
 
 function mapAuthError(error: AuthError | Error): string {
@@ -197,25 +205,21 @@ export const useAuthStore = defineStore('auth', {
           companyId,
           canNegotiateRates: true,
           handlesLTL: payload.role === 'carrier' ? payload.handlesLTL : false,
+          handlesLocal: payload.handlesLocal,
+          handlesIntraState: payload.handlesIntraState,
+          coversUSA: payload.coversUSA,
           routes: payload.routes,
           coverageStates: payload.coverageStates,
           coverageZones: [],
           coverageEquipmentTypes: payload.coverageEquipmentTypes,
+          coverageUSAStates: payload.coverageUSAStates,
+          notificationEmails: payload.notificationEmails,
+          whatsappNumbers: payload.whatsappNumbers,
           createdAt: new Date(),
         };
 
-        // Order matches iOS: users doc first (phone-index rules call callerData()),
-        // then companies, then users_by_phone.
-        await writeUserProfile(uid, user);
-        try {
-          await waitForPendingWrites(db);
-        } catch {
-          /* best-effort */
-        }
-
-        if (companyId) {
-          try {
-            await writeCompany({
+        const company: TransportCompany | undefined = companyId
+          ? {
               id: companyId,
               name: payload.companyName || '',
               contactName: payload.companyContact || '',
@@ -224,16 +228,46 @@ export const useAuthStore = defineStore('auth', {
               rfc: '',
               status: 'pending_approval',
               createdAt: new Date(),
-            });
-          } catch {
-            /* non-fatal for registration success */
-          }
-        }
+            }
+          : undefined;
 
-        try {
-          await writePhoneIndex(user);
-        } catch {
-          /* non-critical — admin still sees user via users collection */
+        // Client rules cap coverageStates at 16. A full map exceeds that, so
+        // those profiles go through the same Admin SDK function iOS uses.
+        if (user.coverageStates.length > 16) {
+          const idToken = await result.user.getIdToken(true);
+          try {
+            await createUserProfileViaFunction(idToken, user, company);
+          } catch (error) {
+            try {
+              await result.user.delete();
+            } catch {
+              /* avoid blocking the message if Auth cleanup fails */
+            }
+            throw error;
+          }
+        } else {
+          // Order matches iOS: users doc first (phone-index rules call callerData()),
+          // then companies, then users_by_phone.
+          await writeUserProfile(uid, user);
+          try {
+            await waitForPendingWrites(db);
+          } catch {
+            /* best-effort */
+          }
+
+          if (company) {
+            try {
+              await writeCompany(company);
+            } catch {
+              /* non-fatal for registration success */
+            }
+          }
+
+          try {
+            await writePhoneIndex(user);
+          } catch {
+            /* non-critical — admin still sees user via users collection */
+          }
         }
 
         // Match iOS: registration succeeds but user stays logged out until approved
