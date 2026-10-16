@@ -6,6 +6,9 @@ export const PRICER_PUBLISHED_TITLE = "Se publicó una carga";
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Same shape as Firestore isUuid: classic UUIDs and Firebase uids. */
+const APP_ID = /^[A-Za-z0-9_-]{18,36}$/;
+
 export interface PricerCandidate {
   uuid?: unknown;
   role?: unknown;
@@ -26,6 +29,10 @@ export interface PricerNotice {
 
 export function isCanonicalUuid(value: string): boolean {
   return CANONICAL_UUID.test(value);
+}
+
+export function isAppId(value: string): boolean {
+  return APP_ID.test(value);
 }
 
 /**
@@ -73,7 +80,10 @@ export function pricerPublishedBody(parts: {
   return body || PRICER_PUBLISHED_TITLE;
 }
 
-/** Approved pricers only, one uuid each. Carriers and other roles are ignored. */
+/**
+ * Approved pricers only, one id each. Real accounts store a Firebase uid,
+ * not a classic UUID. Carriers and other roles are ignored.
+ */
 export function approvedPricerUuids(users: PricerCandidate[]): string[] {
   const seen = new Set<string>();
   const uuids: string[] = [];
@@ -81,7 +91,7 @@ export function approvedPricerUuids(users: PricerCandidate[]): string[] {
     if (user.role !== "pricer" || user.status !== "approved") continue;
     if (typeof user.uuid !== "string") continue;
     const uuid = user.uuid.trim();
-    if (!isCanonicalUuid(uuid) || seen.has(uuid)) continue;
+    if (!isAppId(uuid) || seen.has(uuid)) continue;
     seen.add(uuid);
     uuids.push(uuid);
   }

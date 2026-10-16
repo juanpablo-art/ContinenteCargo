@@ -442,9 +442,11 @@ export const useDataStore = defineStore('data', {
 
     async notifyCarriersForNewLoad(load: Load) {
       if (!load.notificationChannels.inApp) return;
+      // Pricers get their own notice from onLoadPublished. This list is carriers.
       const matching = this.users.filter(
         (u) =>
           u.role !== 'admin' &&
+          u.role !== 'pricer' &&
           u.status === 'approved' &&
           coversLoad(
             u,
