@@ -1,7 +1,7 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/plugins/firebase';
 import { companyToData, userToData } from '@/lib/firestore-user';
-import type { AppUser, TransportCompany } from '@/lib/models';
+import type { AppUser, CarrierRoute, TransportCompany } from '@/lib/models';
 
 export interface CarrierPreProfile {
   companyName: string;
@@ -15,6 +15,10 @@ export interface CarrierPreProfile {
   handlesIntraState?: boolean;
   coversUSA?: boolean;
   coverageUSAStates: string[];
+  name?: string;
+  routes?: CarrierRoute[];
+  notificationEmails?: string[];
+  whatsappNumbers?: string[];
 }
 
 const EMAIL_PATTERN = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
@@ -69,6 +73,31 @@ export async function lookupCarrierPreProfile(phone: string): Promise<CarrierPre
       coversUSA: typeof data.coversUSA === 'boolean' ? data.coversUSA : undefined,
       coverageUSAStates: Array.isArray(data.coverageUSAStates)
         ? data.coverageUSAStates.filter((item): item is string => typeof item === 'string')
+        : [],
+      name: typeof data.name === 'string' ? data.name : '',
+      routes: Array.isArray(data.routes)
+        ? data.routes.flatMap((item) => {
+            if (!item || typeof item !== 'object') return [];
+            const row = item as Record<string, unknown>;
+            if (typeof row.originState !== 'string' || typeof row.destinationState !== 'string') return [];
+            return [
+              {
+                id: typeof row.id === 'string' ? row.id : '',
+                originState: row.originState,
+                destinationState: row.destinationState,
+                bidirectional: row.bidirectional !== false,
+                equipmentTypes: Array.isArray(row.equipmentTypes)
+                  ? row.equipmentTypes.filter((eq): eq is CarrierRoute['equipmentTypes'][number] => typeof eq === 'string')
+                  : [],
+              },
+            ];
+          })
+        : [],
+      notificationEmails: Array.isArray(data.notificationEmails)
+        ? data.notificationEmails.filter((item): item is string => typeof item === 'string')
+        : [],
+      whatsappNumbers: Array.isArray(data.whatsappNumbers)
+        ? data.whatsappNumbers.filter((item): item is string => typeof item === 'string')
         : [],
     };
   } catch {

@@ -9,6 +9,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore';
 import { auth, db } from '@/plugins/firebase';
+import { MEXICAN_ZONES, newUuid, type CarrierRoute } from '@/lib/models';
 
 export type AccountStatus = '' | 'approved' | 'pending_approval' | 'rejected' | 'suspended';
 
@@ -29,6 +30,13 @@ export interface CarrierDirectoryRecord {
   handlesLocal?: boolean;
   handlesIntraState?: boolean;
   coversUSA?: boolean;
+  /** Nombre de la persona, distinto del contacto de la empresa cuando el registro los separa. */
+  name?: string;
+  coverageStates?: string[];
+  coverageUSAStates?: string[];
+  routes?: CarrierRoute[];
+  notificationEmails?: string[];
+  whatsappNumbers?: string[];
   /** Invitation state on the preprofile: pending_invitation, sent, failed, registered. */
   status: string;
   /** Pricer who sent the invitation and owns the follow-up. Empty until they send it. */
@@ -437,16 +445,22 @@ export async function fetchCarrierDirectory(): Promise<CarrierDirectoryRecord[]>
 }
 
 export interface CarrierProfileDraft {
+  name: string;
   companyName: string;
   contactName: string;
   email: string;
   baseCity: string;
   equipmentTypes: string[];
   coverageZones: string[];
+  coverageStates: string[];
   handlesLTL: boolean;
   handlesLocal: boolean;
   handlesIntraState: boolean;
   coversUSA: boolean;
+  coverageUSAStates: string[];
+  routes: CarrierRoute[];
+  notificationEmails: string[];
+  whatsappNumbers: string[];
 }
 
 export interface CarrierProfile extends CarrierProfileDraft {
@@ -456,9 +470,44 @@ export interface CarrierProfile extends CarrierProfileDraft {
   pricerEmail: string;
 }
 
+function statesFromZones(zones: string[]): string[] {
+  return zones.flatMap((zoneId) => {
+    const zone = MEXICAN_ZONES.find((item) => item.id === zoneId);
+    return zone ? [...zone.states] : [];
+  });
+}
+
+export function zonesFromStates(states: string[]): string[] {
+  return MEXICAN_ZONES.filter((zone) =>
+    zone.states.some((state) => states.includes(state)),
+  ).map((zone) => zone.id);
+}
+
+function asRoutes(value: unknown): CarrierRoute[] {
+  if (!Array.isArray(value)) return [];
+  const routes: CarrierRoute[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    if (typeof row.originState !== 'string' || typeof row.destinationState !== 'string') continue;
+    routes.push({
+      id: typeof row.id === 'string' ? row.id : newUuid(),
+      originState: row.originState,
+      destinationState: row.destinationState,
+      bidirectional: row.bidirectional !== false,
+      equipmentTypes: asStringList(row.equipmentTypes) as CarrierRoute['equipmentTypes'],
+    });
+  }
+  return routes;
+}
+
 function profileFromRecord(record: CarrierDirectoryRecord): CarrierProfile {
+  const coverageStates = record.coverageStates?.length
+    ? [...record.coverageStates]
+    : statesFromZones(record.coverageZones);
   return {
     id: record.id,
+    name: record.name || record.contactName,
     companyName: record.companyName,
     contactName: record.contactName,
     phone: record.phone,
@@ -466,10 +515,15 @@ function profileFromRecord(record: CarrierDirectoryRecord): CarrierProfile {
     baseCity: record.baseCity,
     equipmentTypes: [...record.equipmentTypes],
     coverageZones: [...record.coverageZones],
+    coverageStates,
     handlesLTL: record.handlesLTL,
     handlesLocal: Boolean(record.handlesLocal),
     handlesIntraState: Boolean(record.handlesIntraState),
     coversUSA: Boolean(record.coversUSA),
+    coverageUSAStates: [...(record.coverageUSAStates ?? [])],
+    routes: record.routes ? record.routes.map((route) => ({ ...route, equipmentTypes: [...route.equipmentTypes] })) : [],
+    notificationEmails: [...(record.notificationEmails ?? [])],
+    whatsappNumbers: [...(record.whatsappNumbers ?? [])],
     status: record.status,
     pricerEmail: record.pricerEmail,
   };
@@ -487,10 +541,18 @@ function profileFromData(id: string, data: DocumentData): CarrierProfile | null 
     baseCity: typeof data.baseCity === 'string' ? data.baseCity : '',
     equipmentTypes: asStringList(data.equipmentTypes),
     coverageZones: asStringList(data.coverageZones),
+    coverageStates: asStringList(data.coverageStates).length
+      ? asStringList(data.coverageStates)
+      : statesFromZones(asStringList(data.coverageZones)),
     handlesLTL: Boolean(data.handlesLTL),
     handlesLocal: Boolean(data.handlesLocal),
     handlesIntraState: Boolean(data.handlesIntraState),
     coversUSA: Boolean(data.coversUSA),
+    coverageUSAStates: asStringList(data.coverageUSAStates),
+    routes: asRoutes(data.routes),
+    notificationEmails: asStringList(data.notificationEmails),
+    whatsappNumbers: asStringList(data.whatsappNumbers),
+    name: typeof data.name === 'string' && data.name ? data.name : (typeof data.contactName === 'string' ? data.contactName : ''),
     status: typeof data.status === 'string' ? data.status : 'pending_invitation',
     pricerEmail: typeof data.pricerEmail === 'string' ? data.pricerEmail : '',
   };
@@ -507,6 +569,17 @@ export function carrierProfileError(input: CarrierProfileDraft): string | null {
     return 'Escribe un correo válido o déjalo vacío.';
   }
   if (city.length > 80) return 'La ciudad no puede pasar de 80 caracteres.';
+  if (input.name.trim().length > 80) return 'El nombre no puede pasar de 80 caracteres.';
+  if (input.notificationEmails.length > 10) return 'Máximo 10 correos adicionales.';
+  if (input.whatsappNumbers.length > 10) return 'Máximo 10 WhatsApp adicionales.';
+  if (input.notificationEmails.some((item) => !item.includes('@') || item.length > 120)) {
+    return 'Revisa los correos adicionales.';
+  }
+  if (input.whatsappNumbers.some((item) => !/^\d{10}$/.test(item))) {
+    return 'Cada WhatsApp adicional debe tener 10 dígitos.';
+  }
+  if (input.routes.length > 12) return 'Máximo 12 rutas.';
+  if (input.coverageUSAStates.length > 51) return 'Demasiados estados de Estados Unidos.';
   return null;
 }
 
@@ -520,16 +593,22 @@ export function saveDemoCarrierProfile(id: string, input: CarrierProfileDraft): 
   if (!row) throw new Error('No se encontró el transportista.');
   const error = carrierProfileError(input);
   if (error) throw new Error(error);
+  row.name = input.name.trim();
   row.companyName = input.companyName.trim();
   row.contactName = input.contactName.trim();
   row.email = input.email.trim();
   row.baseCity = input.baseCity.trim();
   row.equipmentTypes = [...input.equipmentTypes];
   row.coverageZones = [...input.coverageZones];
+  row.coverageStates = [...input.coverageStates];
   row.handlesLTL = input.handlesLTL;
   row.handlesLocal = input.handlesLocal;
   row.handlesIntraState = input.handlesIntraState;
   row.coversUSA = input.coversUSA;
+  row.coverageUSAStates = [...input.coverageUSAStates];
+  row.routes = input.routes.map((route) => ({ ...route, equipmentTypes: [...route.equipmentTypes] }));
+  row.notificationEmails = [...input.notificationEmails];
+  row.whatsappNumbers = [...input.whatsappNumbers];
 }
 
 export async function fetchCarrierProfile(id: string): Promise<CarrierProfile | null> {
@@ -542,16 +621,22 @@ export async function saveCarrierProfile(id: string, input: CarrierProfileDraft)
   const error = carrierProfileError(input);
   if (error) throw new Error(error);
   await updateDoc(doc(db, 'carrier_preprofiles', id), {
+    name: input.name.trim(),
     companyName: input.companyName.trim(),
     contactName: input.contactName.trim(),
     email: input.email.trim(),
     baseCity: input.baseCity.trim(),
     equipmentTypes: input.equipmentTypes,
     coverageZones: input.coverageZones,
+    coverageStates: input.coverageStates,
     handlesLTL: input.handlesLTL,
     handlesLocal: input.handlesLocal,
     handlesIntraState: input.handlesIntraState,
     coversUSA: input.coversUSA,
+    coverageUSAStates: input.coversUSA ? input.coverageUSAStates : [],
+    routes: input.routes,
+    notificationEmails: input.notificationEmails,
+    whatsappNumbers: input.whatsappNumbers,
   });
 }
 

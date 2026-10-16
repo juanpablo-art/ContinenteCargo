@@ -136,7 +136,7 @@ function applyPreProfile(profile: CarrierPreProfile) {
   if (!companyName.value.trim()) companyName.value = profile.companyName;
   if (!companyContact.value.trim()) companyContact.value = profile.contactName;
   if (!email.value.trim()) email.value = profile.email;
-  if (!name.value.trim()) name.value = profile.contactName;
+  if (!name.value.trim()) name.value = profile.name || profile.contactName;
   handlesLTL.value = profile.handlesLTL;
   handlesLocal.value = profile.handlesLocal;
   if (typeof profile.handlesIntraState === 'boolean') {
@@ -160,6 +160,16 @@ function applyPreProfile(profile: CarrierPreProfile) {
 
   const equipment = profile.equipmentTypes.filter(isEquipment);
   if (equipment.length) coverageEquipment.value = new Set(equipment);
+  if (profile.routes?.length) {
+    routes.value = profile.routes.map((item) => ({
+      ...item,
+      id: item.id || newUuid(),
+      equipmentTypes: item.equipmentTypes.filter(isEquipment),
+    }));
+    if (!states.length) coverageMode.value = 'route';
+  }
+  if (profile.notificationEmails?.length) extraEmails.value = [...profile.notificationEmails];
+  if (profile.whatsappNumbers?.length) whatsappNumbers.value = [...profile.whatsappNumbers];
   preProfileFound.value = Boolean(
     profile.companyName.trim() ||
       profile.contactName.trim() ||
