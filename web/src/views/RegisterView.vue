@@ -25,7 +25,6 @@ import {
   newUuid,
   type CarrierRoute,
   type EquipmentType,
-  type UserRole,
 } from '@/lib/models';
 import {
   checkWhatsApp,
@@ -39,7 +38,6 @@ import FormSwitch from '@/components/FormSwitch.vue';
 import MexicoZoneMap from '@/components/MexicoZoneMap.vue';
 import USAZoneGrid from '@/components/USAZoneGrid.vue';
 
-type RegType = 'carrier' | 'independent_operator';
 type Step = 'basic' | 'coverage' | 'done';
 type CoverageMode = 'zone' | 'route';
 
@@ -51,7 +49,6 @@ const name = ref('');
 const email = ref('');
 const phone = ref('');
 const password = ref('');
-const selectedType = ref<RegType>('carrier');
 const companyName = ref('');
 const companyContact = ref('');
 const handlesLTL = ref(false);
@@ -85,18 +82,15 @@ const coverageUSAStates = ref<Set<string>>(new Set());
 const phoneDigits = computed(() => phone.value.replace(/\D/g, ''));
 const phoneIsValid = computed(() => phoneDigits.value.length === 10);
 
-const basicValid = computed(() => {
-  const companyReady =
-    selectedType.value !== 'carrier' ||
-    (companyName.value.trim() !== '' && companyContact.value.trim() !== '');
-  return (
+const basicValid = computed(
+  () =>
     name.value.trim() !== '' &&
     email.value.trim() !== '' &&
     password.value !== '' &&
-    companyReady &&
-    phoneIsValid.value
-  );
-});
+    companyName.value.trim() !== '' &&
+    companyContact.value.trim() !== '' &&
+    phoneIsValid.value,
+);
 
 const emailReady = computed(() => isValidEmail(newEmailInput.value.trim()));
 const pendingWhatsappStatus = computed(() => whatsappStatus(newWhatsappInput.value));
@@ -263,19 +257,18 @@ async function submit() {
   if (!canFinish.value) return;
 
   auth.clearError();
-  const role = selectedType.value as Exclude<UserRole, 'admin'>;
   const ok = await auth.register({
     name: name.value.trim(),
     email: email.value.trim(),
     password: password.value,
     phone: phone.value.trim(),
-    role,
+    role: 'carrier',
     companyName: companyName.value.trim(),
     companyContact: companyContact.value.trim(),
     routes: routes.value,
     coverageStates: [...selectedStates.value],
     coverageEquipmentTypes: [...coverageEquipment.value],
-    handlesLTL: role === 'carrier' ? handlesLTL.value : false,
+    handlesLTL: handlesLTL.value,
     handlesLocal: handlesLocal.value,
     handlesIntraState: handlesIntraState.value,
     coversUSA: coversUSA.value,
@@ -339,36 +332,6 @@ function goLogin() {
         <span class="h-0.5 w-8 bg-line" />
         <span class="size-2 rounded-full bg-line" />
         <span class="ml-auto">Paso 1 de 2</span>
-      </div>
-
-      <div>
-        <p class="cc-label">Tipo de cuenta</p>
-        <div class="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            class="rounded-[10px] border px-3 py-3 text-left text-sm transition"
-            :class="
-              selectedType === 'carrier'
-                ? 'border-blue bg-blue-soft text-navy'
-                : 'border-line bg-card text-muted'
-            "
-            @click="selectedType = 'carrier'"
-          >
-            <span class="block font-semibold">Línea Transportista</span>
-          </button>
-          <button
-            type="button"
-            class="rounded-[10px] border px-3 py-3 text-left text-sm transition"
-            :class="
-              selectedType === 'independent_operator'
-                ? 'border-blue bg-blue-soft text-navy'
-                : 'border-line bg-card text-muted'
-            "
-            @click="selectedType = 'independent_operator'"
-          >
-            <span class="block font-semibold">Operador Independiente</span>
-          </button>
-        </div>
       </div>
 
       <div>
@@ -452,9 +415,8 @@ function goLogin() {
         </div>
       </div>
 
-      <template v-if="selectedType === 'carrier'">
-        <div class="h-px bg-line" />
-        <h3 class="font-semibold text-navy">Datos de la empresa</h3>
+      <div class="h-px bg-line" />
+      <h3 class="font-semibold text-navy">Datos de la empresa</h3>
         <div>
           <label class="cc-label" for="company">Nombre de la empresa</label>
           <div class="relative">
@@ -477,7 +439,6 @@ function goLogin() {
           hint="Acepto cargas parciales que se agrupan con otros envíos"
           label="Manejo carga consolidada (LTL)"
         />
-      </template>
 
       <div class="h-px bg-line" />
       <h3 class="font-semibold text-navy">Tipo de rutas</h3>
