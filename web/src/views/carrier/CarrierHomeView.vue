@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Search, SlidersHorizontal, PackageSearch, X, ShieldAlert } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
@@ -25,11 +25,22 @@ const openLoads = computed(() =>
   store.loadsForCurrentUser().filter((l) => l.status === 'Publicado' && loadIsOpen(l)),
 );
 
+watch(
+  () => auth.currentUser?.handlesLTL,
+  (on) => {
+    if (!on && filterMode.value === 'Consolidada LTL') filterMode.value = null;
+  },
+);
+
 const filteredLoads = computed(() => {
   const q = searchText.value.trim().toLowerCase();
+  const mode =
+    filterMode.value === 'Consolidada LTL' && !auth.currentUser?.handlesLTL
+      ? null
+      : filterMode.value;
   return openLoads.value
     .filter((load) => {
-      if (filterMode.value && load.assignmentMode !== filterMode.value) return false;
+      if (mode && load.assignmentMode !== mode) return false;
       if (filterEquipment.value && load.equipmentType !== filterEquipment.value) return false;
       if (!q) return true;
       return [
@@ -45,6 +56,12 @@ const filteredLoads = computed(() => {
     })
     .sort((a, b) => a.deadline.getTime() - b.deadline.getTime());
 });
+
+const modeFilters = computed(() =>
+  ASSIGNMENT_MODES.filter(
+    (mode) => mode !== 'Consolidada LTL' || auth.currentUser?.handlesLTL,
+  ),
+);
 
 const hasFilters = computed(
   () => Boolean(filterMode.value || filterEquipment.value || searchText.value.trim()),
@@ -106,7 +123,7 @@ function clearFilters() {
             Todas
           </button>
           <button
-            v-for="mode in ASSIGNMENT_MODES"
+            v-for="mode in modeFilters"
             :key="mode"
             type="button"
             class="cc-chip"

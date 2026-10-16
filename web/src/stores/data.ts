@@ -444,20 +444,19 @@ export const useDataStore = defineStore('data', {
     async notifyCarriersForNewLoad(load: Load) {
       if (!load.notificationChannels.inApp) return;
       // Pricers get their own notice from onLoadPublished. This list is carriers.
-      const matching = this.users.filter(
-        (u) =>
-          u.role !== 'admin' &&
-          u.role !== 'pricer' &&
-          u.status === 'approved' &&
-          coversLoad(
-            u,
-            load.originCity,
-            load.originState,
-            load.destinationCity,
-            load.destinationState,
-            load.equipmentType,
-          ),
-      );
+      const ltl = load.assignmentMode === 'Consolidada LTL';
+      const matching = this.users.filter((u) => {
+        if (u.role === 'admin' || u.role === 'pricer' || u.status !== 'approved') return false;
+        if (ltl) return u.handlesLTL;
+        return coversLoad(
+          u,
+          load.originCity,
+          load.originState,
+          load.destinationCity,
+          load.destinationState,
+          load.equipmentType,
+        );
+      });
       for (const carrier of matching) {
         try {
           await this.notify(
@@ -934,7 +933,7 @@ export const useDataStore = defineStore('data', {
     async submitLTLQuote(loadId: string, amount: number, notes = ''): Promise<boolean> {
       const auth = useAuthStore();
       const user = auth.currentUser;
-      if (!user || user.status !== 'approved') return false;
+      if (!user || user.status !== 'approved' || !user.handlesLTL) return false;
       const load = this.loads.find((l) => l.id === loadId);
       if (
         !load ||

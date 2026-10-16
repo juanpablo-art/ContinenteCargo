@@ -205,6 +205,11 @@ async function notifyApprovedPricersOfPublishedLoad(
   console.log(`[Load] In-app notice for ${notices.length} approved pricers (${load.reference})`);
 }
 
+function carriersForPublishedLoad(carriers: UserRecord[], load: LoadRecord): UserRecord[] {
+  if (load.assignmentMode !== "Consolidada LTL") return carriers;
+  return carriers.filter((carrier) => carrier.handlesLTL === true);
+}
+
 export const onLoadPublished = onDocumentWritten(
   { document: "loads/{loadId}", region: REGION, secrets: [...WA_SECRETS] },
   async (event) => {
@@ -222,8 +227,11 @@ export const onLoadPublished = onDocumentWritten(
     await notifyApprovedPricersOfPublishedLoad(loadId, after);
 
     const ctx     = buildContext();
-    const carriers = await findMatchingCarriers(
-      after.originState, after.destinationState, after.equipmentType
+    const carriers = carriersForPublishedLoad(
+      await findMatchingCarriers(
+        after.originState, after.destinationState, after.equipmentType
+      ),
+      after,
     );
 
     const priceStr = formatPrice(after.offeredPrice);
@@ -353,8 +361,11 @@ export const onLoadUrgencyAlert = onDocumentWritten(
 
     const loadId   = event.params.loadId;
     const ctx      = buildContext();
-    const carriers = await findMatchingCarriers(
-      after.originState, after.destinationState, after.equipmentType
+    const carriers = carriersForPublishedLoad(
+      await findMatchingCarriers(
+        after.originState, after.destinationState, after.equipmentType
+      ),
+      after,
     );
     if (carriers.length === 0) return;
 
@@ -775,8 +786,11 @@ export const onLoadUrgencyCallAlert = onDocumentWritten(
     if (!after.notificationChannels?.aiCall) return;
 
     const loadId   = event.params.loadId;
-    const carriers = await findMatchingCarriers(
-      after.originState, after.destinationState, after.equipmentType
+    const carriers = carriersForPublishedLoad(
+      await findMatchingCarriers(
+        after.originState, after.destinationState, after.equipmentType
+      ),
+      after,
     );
     if (carriers.length === 0) return;
 

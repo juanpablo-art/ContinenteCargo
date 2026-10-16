@@ -202,6 +202,31 @@ export function decideUnitTake(
   return { ok: true, units: requested };
 }
 
+async function carrierOffersLtl(uuid: string): Promise<boolean> {
+  const snap = await admin.firestore()
+    .collection("users")
+    .where("uuid", "==", uuid)
+    .limit(1)
+    .get();
+  if (snap.empty) return false;
+  return snap.docs[0].get("handlesLTL") === true;
+}
+
+async function refuseLtlLoad(
+  from: string,
+  carrier: CarrierInfo,
+  load: LoadRecord,
+  send: (body: string) => Promise<unknown>,
+): Promise<boolean> {
+  if (load.assignmentMode !== "Consolidada LTL") return false;
+  if (await carrierOffersLtl(carrier.uuid)) return false;
+  await clearConversationLoad(from);
+  await send(
+    `El viaje *${load.reference}* es carga consolidada (LTL). Tu registro no incluye ese servicio, así que no puedo ofrecértelo.`
+  );
+  return true;
+}
+
 export function unitSlots(load: LoadRecord): { total: number; confirmed: number; available: number } {
   const total = Math.max(1, load.unitCount ?? 1);
   const confirmed = typeof load.confirmedUnitCount === "number"
@@ -315,6 +340,9 @@ async function atomicAssign(
 ): Promise<AssignResult> {
   // WA assignment only works for fixed-rate loads
   const mode = load.assignmentMode ?? "";
+  if (mode === "Consolidada LTL" && !(await carrierOffersLtl(carrier.uuid))) {
+    return "mode_unsupported";
+  }
   if (!["fixedRate", "Tarifa Fija"].includes(mode)) {
     return "mode_unsupported";
   }
@@ -584,6 +612,7 @@ export async function handleIncomingMessage(
         ));
         return;
       }
+      if (await refuseLtlLoad(from, carrier, load2, send)) return;
       const unit2 = await findAvailableUnit(carrier.uuid, load2.equipmentType);
       const offer2 = unitOffer(load2, unit2, displayName);
       if (offer2.state === "unavailable") {
@@ -624,6 +653,7 @@ export async function handleIncomingMessage(
       return;
     }
     const load = loadSnap.data() as LoadRecord;
+    if (await refuseLtlLoad(from, carrier, load, send)) return;
     const lc = loadCtx(load);
 
     const confirmedUnitCount = conversation?.pendingUnitCount ?? 1;
@@ -711,6 +741,7 @@ export async function handleIncomingMessage(
     const pendingLoadSnap = await db.collection("loads").doc(conversation.pendingLoadId).get();
     if (!pendingLoadSnap.exists) { await clearConversationLoad(from); return; }
     const pendingLoad  = pendingLoadSnap.data() as LoadRecord;
+    if (await refuseLtlLoad(from, carrier, pendingLoad, send)) return;
     const { total, confirmed, available } = unitSlots(pendingLoad);
     if (available <= 0) {
       await clearConversationLoad(from);
@@ -770,6 +801,7 @@ export async function handleIncomingMessage(
     return;
   }
   const load = loadSnap.data() as LoadRecord;
+  if (await refuseLtlLoad(from, carrier, load, send)) return;
 
   await upsertConversation(from, {
     phone:          from,

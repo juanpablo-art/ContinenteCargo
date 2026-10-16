@@ -35,6 +35,16 @@ const store = useDataStore();
 const loadId = computed(() => String(route.params.id));
 const load = computed(() => store.loadById(loadId.value));
 
+const hiddenLtl = computed(() => {
+  const current = load.value;
+  const user = auth.currentUser;
+  if (!current || !user || user.role === 'admin' || user.role === 'pricer') return false;
+  if (current.assignmentMode !== 'Consolidada LTL' || user.handlesLTL) return false;
+  if (current.confirmedCarrierIds.includes(user.uuid)) return false;
+  if (current.assignedCarrierId === user.uuid || current.assignedOperatorId === user.uuid) return false;
+  return !store.offers.some((offer) => offer.loadId === current.id && offer.carrierId === user.uuid);
+});
+
 type Panel = 'none' | 'take' | 'bid' | 'avail' | 'ltl';
 const panel = ref<Panel>('none');
 const actionsEl = ref<HTMLElement | null>(null);
@@ -137,7 +147,7 @@ async function openPanel(p: Panel) {
 
 <template>
   <div class="cc-page">
-    <div v-if="!load" class="cc-card">
+    <div v-if="!load || hiddenLtl" class="cc-card">
       <EmptyState
         title="Carga no disponible"
         subtitle="La carga no existe, ya se asignó o no está en tu cobertura."
