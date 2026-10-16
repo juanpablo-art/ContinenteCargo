@@ -29,6 +29,7 @@ import {
   timeRemaining,
 } from '@/lib/format';
 import { toast } from '@/lib/toast';
+import { referencePrice } from '@/lib/tarifario';
 import ElapsedCounter from '@/components/ElapsedCounter.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusBadge from '@/components/StatusBadge.vue';
@@ -46,6 +47,21 @@ const loadsRoute = computed(() =>
 
 const loadId = computed(() => String(route.params.id));
 const load = computed(() => store.loadById(loadId.value));
+const market = computed(() =>
+  load.value
+    ? referencePrice(load.value.originCity, load.value.destinationCity, load.value.equipmentType)
+    : null,
+);
+const marketGap = computed(() => {
+  const current = load.value;
+  const refPrice = market.value;
+  if (!current || !refPrice || refPrice.compraMedia <= 0 || current.assignmentMode === 'Consolidada LTL') {
+    return null;
+  }
+  const diff = current.offeredPrice - refPrice.compraMedia;
+  if (diff <= 0) return 0;
+  return Math.round((diff / refPrice.compraMedia) * 100);
+});
 const offers = computed(() =>
   store
     .offersForLoad(loadId.value)
@@ -249,6 +265,43 @@ function sendUrgency() {
                 {{ req }}
               </span>
             </div>
+          </section>
+
+          <section v-if="market" class="cc-card p-5">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 class="cc-h2">Referencia de mercado</h2>
+              <span class="cc-badge bg-blue-soft text-brand">Tarifario arrastres</span>
+            </div>
+            <dl class="grid gap-2 sm:grid-cols-2">
+              <div class="rounded-xl bg-background px-3 py-2.5">
+                <dt class="text-[11px] font-medium text-muted">Compra media</dt>
+                <dd class="cc-money text-sm">{{ formatMoney(market.compraMedia, load.currency) }}</dd>
+              </div>
+              <div class="rounded-xl bg-blue-soft/70 px-3 py-2.5">
+                <dt class="text-[11px] font-medium text-brand">Venta sugerida (15%)</dt>
+                <dd class="cc-money text-sm text-brand">{{ formatMoney(market.ventaSugerida, load.currency) }}</dd>
+              </div>
+              <div class="rounded-xl bg-background px-3 py-2.5">
+                <dt class="text-[11px] font-medium text-muted">Venta mínima (13%)</dt>
+                <dd class="cc-money text-sm">{{ formatMoney(market.ventaMinima, load.currency) }}</dd>
+              </div>
+              <div class="rounded-xl bg-background px-3 py-2.5">
+                <dt class="text-[11px] font-medium text-muted">Venta alta (20%)</dt>
+                <dd class="cc-money text-sm">{{ formatMoney(market.ventaAlta, load.currency) }}</dd>
+              </div>
+            </dl>
+            <p
+              v-if="marketGap != null && marketGap > 0"
+              class="mt-3 rounded-xl bg-orange-soft px-3 py-2 text-xs font-medium text-orange"
+            >
+              Precio publicado {{ marketGap }}% sobre compra media
+            </p>
+            <p
+              v-else-if="marketGap === 0"
+              class="mt-3 rounded-xl bg-success-soft px-3 py-2 text-xs font-medium text-success"
+            >
+              Precio dentro del rango de mercado
+            </p>
           </section>
 
           <section class="cc-card p-5">

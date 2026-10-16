@@ -78,6 +78,36 @@ const attentionCount = computed(
   () => pendingCounterOffers.value.length + pendingApprovals.value.length,
 );
 
+const carrierGrowth = computed(() => {
+  const now = new Date();
+  const carriers = store.users.filter(
+    (user) => user.role === 'carrier' || user.role === 'independent_operator',
+  );
+  return Array.from({ length: 12 }, (_, index) => {
+    const offset = 11 - index;
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const count = carriers.filter(
+      (user) =>
+        user.createdAt != null &&
+        user.createdAt.getFullYear() === date.getFullYear() &&
+        user.createdAt.getMonth() === date.getMonth(),
+    ).length;
+    const shortRaw = new Intl.DateTimeFormat('es-MX', { month: 'short' })
+      .format(date)
+      .replace('.', '');
+    return {
+      label: shortRaw.charAt(0).toUpperCase() + shortRaw.slice(1),
+      count,
+      current: offset === 0,
+    };
+  });
+});
+
+const newThisMonth = computed(() => carrierGrowth.value.at(-1)?.count ?? 0);
+const newPrevMonth = computed(() => carrierGrowth.value.at(-2)?.count ?? 0);
+const growthTrend = computed(() => newThisMonth.value - newPrevMonth.value);
+const growthMax = computed(() => Math.max(1, ...carrierGrowth.value.map((row) => row.count)));
+
 async function run(id: string, action: () => Promise<unknown>, ok: string) {
   busy.value = id;
   try {
@@ -328,6 +358,12 @@ async function run(id: string, action: () => Promise<unknown>, ok: string) {
               </p>
               <p class="mt-0.5 truncate text-xs text-muted">
                 {{ load.reference }} · {{ formatShortDate(load.pickupDate) }}
+                <template v-if="load.unitCount > 1">
+                  · {{ load.confirmedUnitCount }}/{{ load.unitCount }} unidades
+                  <template v-if="load.confirmedUnitCount < load.unitCount">
+                    · {{ load.unitCount - load.confirmedUnitCount }} restantes
+                  </template>
+                </template>
               </p>
             </div>
             <StatusBadge :load="load" />
@@ -338,5 +374,43 @@ async function run(id: string, action: () => Promise<unknown>, ok: string) {
         </div>
       </aside>
     </div>
+
+    <section class="mt-8">
+      <h2 class="cc-h2 mb-3">Nuevos transportistas por mes</h2>
+      <div class="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <div class="cc-card flex items-end justify-between gap-3 p-5">
+          <div>
+            <p class="text-4xl font-bold tracking-tight text-navy tabular-nums">{{ newThisMonth }}</p>
+            <p class="mt-1 text-sm text-muted">este mes</p>
+          </div>
+          <p v-if="growthTrend === 0" class="text-right text-xs text-muted">Sin cambio vs mes anterior</p>
+          <p v-else class="text-right text-sm font-semibold" :class="growthTrend > 0 ? 'text-success' : 'text-danger'">
+            {{ growthTrend > 0 ? '+' : '−' }}{{ Math.abs(growthTrend) }}
+            <span class="mt-1 block text-xs font-medium text-muted">vs mes anterior ({{ newPrevMonth }})</span>
+          </p>
+        </div>
+        <div class="cc-card divide-y divide-line px-4 py-2">
+          <div
+            v-for="row in [...carrierGrowth].reverse()"
+            :key="row.label + (row.current ? '-now' : '')"
+            class="flex items-center gap-3 py-1.5"
+          >
+            <span class="w-8 text-xs" :class="row.current ? 'font-semibold text-brand' : 'text-muted'">
+              {{ row.label }}
+            </span>
+            <span class="h-4 flex-1">
+              <span
+                class="block h-4 rounded"
+                :class="row.current ? 'bg-brand' : 'bg-brand/35'"
+                :style="{ width: row.count ? `${Math.max(2, (row.count / growthMax) * 100)}%` : '0%' }"
+              />
+            </span>
+            <span class="w-6 text-right text-xs font-semibold tabular-nums" :class="row.current ? 'text-navy' : 'text-muted'">
+              {{ row.count }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
