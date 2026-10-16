@@ -10,20 +10,26 @@ import {
   UserPlus,
   MessageCircle,
   Check,
+  Send,
+  UserCheck,
 } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
+import { demoUsers } from '@/lib/demo-data';
 import {
   demoDirectoryRecords,
+  directoryPhone,
   fetchCarrierDirectory,
   importCarrierDirectory,
   inviteFromDirectory,
+  registrationIndexFromContacts,
+  withRegistration,
   type CarrierDirectoryRecord,
 } from '@/lib/directory';
 import EmptyState from '@/components/EmptyState.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { toast } from '@/lib/toast';
 
-type Filter = 'all' | 'pending' | 'invited' | 'registered';
+type Filter = 'missing' | 'all' | 'pending' | 'invited' | 'registered';
 
 const auth = useAuthStore();
 const isAdmin = computed(() => auth.currentUser?.role === 'admin');
@@ -33,7 +39,7 @@ const inviteRoute = computed(() => (isAdmin.value ? 'admin-invitations' : 'price
 const records = ref<CarrierDirectoryRecord[]>([]);
 const selected = ref<Set<string>>(new Set());
 const search = ref('');
-const filter = ref<Filter>('all');
+const filter = ref<Filter>('missing');
 const loading = ref(true);
 const sending = ref(false);
 const importing = ref(false);
@@ -46,21 +52,29 @@ const statusOf = (status: string) => {
 };
 
 function matchesFilter(record: CarrierDirectoryRecord, id: Filter) {
-  if (id === 'pending') return record.status === 'pending_invitation';
-  if (id === 'invited') return record.status === 'sent' || record.status === 'failed';
-  if (id === 'registered') return record.status === 'registered';
+  if (id === 'missing') return !record.registered;
+  if (id === 'pending') return !record.registered && record.status === 'pending_invitation';
+  if (id === 'invited') return !record.registered && (record.status === 'sent' || record.status === 'failed');
+  if (id === 'registered') return record.registered;
   return true;
+}
+
+function canReach(record: CarrierDirectoryRecord) {
+  return Boolean(directoryPhone(record.phone) || record.email.includes('@'));
 }
 
 const chips = computed(() => {
   const all = records.value;
   return [
-    { id: 'all' as const, label: 'Todos', n: all.length },
+    { id: 'missing' as const, label: 'Sin registro', n: all.filter((r) => matchesFilter(r, 'missing')).length },
     { id: 'pending' as const, label: 'Pendientes', n: all.filter((r) => matchesFilter(r, 'pending')).length },
     { id: 'invited' as const, label: 'Invitados', n: all.filter((r) => matchesFilter(r, 'invited')).length },
     { id: 'registered' as const, label: 'Registrados', n: all.filter((r) => matchesFilter(r, 'registered')).length },
+    { id: 'all' as const, label: 'Todos', n: all.length },
   ];
 });
+
+const missing = computed(() => records.value.filter((r) => !r.registered && canReach(r)));
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -78,14 +92,18 @@ const filtered = computed(() => {
     .sort((a, b) => a.companyName.localeCompare(b.companyName, 'es'));
 });
 
-const selectedRecords = computed(() => filtered.value.filter((r) => selected.value.has(r.id)));
-const selectedWithPhone = computed(() => selectedRecords.value.filter((r) => r.phone));
-const selectedWithEmail = computed(() => selectedRecords.value.filter((r) => r.email));
+const selectable = computed(() => filtered.value.filter((r) => !r.registered));
+const selectedRecords = computed(() =>
+  selectable.value.filter((r) => selected.value.has(r.id)),
+);
+const selectedWithPhone = computed(() => selectedRecords.value.filter((r) => directoryPhone(r.phone)));
+const selectedWithEmail = computed(() => selectedRecords.value.filter((r) => r.email.includes('@')));
 const allFilteredSelected = computed(
-  () => filtered.value.length > 0 && filtered.value.every((r) => selected.value.has(r.id)),
+  () => selectable.value.length > 0 && selectable.value.every((r) => selected.value.has(r.id)),
 );
 
 function toggle(id: string) {
+  if (records.value.some((r) => r.id === id && r.registered)) return;
   const next = new Set(selected.value);
   if (next.has(id)) next.delete(id);
   else next.add(id);
@@ -94,17 +112,28 @@ function toggle(id: string) {
 
 function toggleAll() {
   const next = new Set(selected.value);
-  if (allFilteredSelected.value) filtered.value.forEach((r) => next.delete(r.id));
-  else filtered.value.forEach((r) => next.add(r.id));
+  if (allFilteredSelected.value) selectable.value.forEach((r) => next.delete(r.id));
+  else selectable.value.forEach((r) => next.add(r.id));
   selected.value = next;
+}
+
+function decorate(rows: CarrierDirectoryRecord[]) {
+  return withRegistration(
+    rows.map((row) => ({ ...row })),
+    registrationIndexFromContacts(demoUsers()),
+  );
 }
 
 async function load() {
   loading.value = true;
   try {
     records.value = isDemo.value
-      ? demoDirectoryRecords().map((r) => ({ ...r }))
+      ? decorate(demoDirectoryRecords())
       : await fetchCarrierDirectory();
+    const live = new Set(records.value.filter((r) => !r.registered).map((r) => r.id));
+    if ([...selected.value].some((id) => !live.has(id))) {
+      selected.value = new Set([...selected.value].filter((id) => live.has(id)));
+    }
   } catch (e) {
     records.value = [];
     toast.error('No se pudo cargar el directorio', e instanceof Error ? e.message : undefined);
@@ -134,32 +163,35 @@ async function importDirectory() {
   }
 }
 
-async function send(channel: 'whatsapp' | 'email') {
-  const targets = channel === 'whatsapp' ? selectedWithPhone.value : selectedWithEmail.value;
-  if (!targets.length) return;
+function markDemoSent(targets: CarrierDirectoryRecord[]) {
+  const live = demoDirectoryRecords();
+  for (const target of targets) {
+    const row = live.find((r) => r.id === target.id);
+    if (row && !row.registered && row.status !== 'registered') row.status = 'sent';
+  }
+}
+
+async function deliver(
+  targets: CarrierDirectoryRecord[],
+  channel: 'whatsapp' | 'email' | 'auto',
+  label: string,
+) {
+  if (!targets.length || sending.value) return;
   sending.value = true;
   try {
     let success = targets.length;
     let failed = 0;
     if (isDemo.value) {
-      const live = demoDirectoryRecords();
-      for (const target of targets) {
-        const row = live.find((r) => r.id === target.id);
-        if (row) row.status = 'sent';
-      }
+      markDemoSent(targets);
     } else {
-      const result = await inviteFromDirectory(
-        targets,
-        channel,
-        auth.currentUser?.uuid ?? '',
-      );
+      const result = await inviteFromDirectory(targets, channel, auth.currentUser?.uuid ?? '');
       success = result.success;
       failed = result.failed;
     }
-    const label = channel === 'whatsapp' ? 'WhatsApp' : 'correo';
+    const noun = success === 1 ? 'invitación' : 'invitaciones';
     toast.success(
-      `${success} invitación${success === 1 ? '' : 'es'} por ${label}`,
-      failed ? `${failed} fallaron. Revisa los datos.` : undefined,
+      `${success} ${noun} por ${label}`,
+      failed ? `${failed} fallaron. Revisa los datos.` : 'Quien ya se registró no entra en el envío.',
     );
     selected.value = new Set();
     await load();
@@ -170,6 +202,20 @@ async function send(channel: 'whatsapp' | 'email') {
   }
 }
 
+function send(channel: 'whatsapp' | 'email') {
+  const targets = channel === 'whatsapp' ? selectedWithPhone.value : selectedWithEmail.value;
+  const label = channel === 'whatsapp' ? 'WhatsApp' : 'correo';
+  return deliver(targets, channel, label);
+}
+
+function inviteMissing() {
+  const whatsapp = missing.value.filter((r) => directoryPhone(r.phone)).length;
+  const email = missing.value.length - whatsapp;
+  const label =
+    email && whatsapp ? `WhatsApp (${whatsapp}) y correo (${email})` : whatsapp ? 'WhatsApp' : 'correo';
+  return deliver(missing.value, 'auto', label);
+}
+
 onMounted(load);
 </script>
 
@@ -177,7 +223,7 @@ onMounted(load);
   <div class="cc-page" :class="selected.size ? 'pb-28' : ''">
     <PageHeader
       :title="`Directorio${records.length ? ` (${records.length})` : ''}`"
-      subtitle="Preperfiles para invitar transportistas por WhatsApp o correo"
+      subtitle="Invita de una vez a quienes faltan y revisa quién ya se registró"
       :back="isAdmin ? { name: 'admin-carriers' } : undefined"
       back-label="Transportistas"
     >
@@ -241,6 +287,31 @@ onMounted(load);
     </div>
 
     <template v-else>
+      <section class="mb-4 flex flex-col gap-3 rounded-2xl border border-line bg-card p-4 shadow-card sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+          <p class="text-sm font-semibold text-navy">
+            {{ missing.length ? `${missing.length} sin registro` : 'Todos registrados' }}
+          </p>
+          <p class="mt-0.5 text-xs text-muted">
+            {{
+              missing.length
+                ? 'Un envío por WhatsApp, o por correo si no hay teléfono. Quien ya tiene cuenta no recibe otro mensaje.'
+                : 'Nadie del directorio está pendiente de registro.'
+            }}
+          </p>
+        </div>
+        <button
+          v-if="missing.length"
+          type="button"
+          class="cc-btn h-11 w-full shrink-0 px-4 sm:w-auto"
+          :disabled="sending"
+          @click="inviteMissing"
+        >
+          <Send class="size-4" aria-hidden="true" />
+          {{ sending ? 'Enviando…' : `Invitar a los ${missing.length} que faltan` }}
+        </button>
+      </section>
+
       <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div class="cc-scroll-x">
           <button
@@ -270,33 +341,48 @@ onMounted(load);
               placeholder="Empresa, contacto, ciudad o teléfono"
             />
           </label>
-          <button type="button" class="cc-btn-secondary h-11 w-auto shrink-0 px-3 text-[13px]" @click="toggleAll">
+          <button
+            v-if="selectable.length"
+            type="button"
+            class="cc-btn-secondary h-11 w-auto shrink-0 px-3 text-[13px]"
+            @click="toggleAll"
+          >
             {{ allFilteredSelected ? 'Quitar' : 'Seleccionar' }}
           </button>
         </div>
       </div>
 
       <p v-if="!filtered.length" class="py-16 text-center text-sm text-muted">
-        Sin resultados para “{{ search }}”
+        {{ search ? `Sin resultados para “${search}”` : 'Nadie en este filtro.' }}
       </p>
 
       <ul v-else class="grid gap-2.5">
         <li v-for="record in filtered" :key="record.id">
-          <button
-            type="button"
-            class="flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition"
+          <component
+            :is="record.registered ? 'div' : 'button'"
+            :type="record.registered ? undefined : 'button'"
+            class="flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left"
             :class="
-              selected.has(record.id)
-                ? 'border-brand/30 bg-blue-soft/50'
-                : 'border-transparent bg-card shadow-card hover:shadow-card-hover'
+              record.registered
+                ? 'border-transparent bg-card shadow-card'
+                : selected.has(record.id)
+                  ? 'border-brand/30 bg-blue-soft/50 transition'
+                  : 'border-transparent bg-card shadow-card transition hover:shadow-card-hover'
             "
-            @click="toggle(record.id)"
+            @click="record.registered ? undefined : toggle(record.id)"
           >
             <span
               class="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border"
-              :class="selected.has(record.id) ? 'border-brand bg-brand text-white' : 'border-line bg-card text-transparent'"
+              :class="
+                record.registered
+                  ? 'border-success/30 bg-success-soft text-success'
+                  : selected.has(record.id)
+                    ? 'border-brand bg-brand text-white'
+                    : 'border-line bg-card text-transparent'
+              "
             >
-              <Check class="size-3.5" aria-hidden="true" />
+              <UserCheck v-if="record.registered" class="size-3.5" aria-hidden="true" />
+              <Check v-else class="size-3.5" aria-hidden="true" />
             </span>
             <span class="min-w-0 flex-1">
               <span class="flex items-start justify-between gap-3">
@@ -304,6 +390,12 @@ onMounted(load);
                 <span class="cc-badge shrink-0" :class="statusOf(record.status).cls">
                   {{ statusOf(record.status).label }}
                 </span>
+              </span>
+              <span
+                class="mt-1 block text-xs font-medium"
+                :class="record.registered ? 'text-success' : 'text-orange'"
+              >
+                {{ record.registered ? 'Ya completó su registro' : 'Aún no se registra — conviene insistir' }}
               </span>
               <span v-if="record.contactName" class="mt-0.5 block truncate text-xs text-muted">
                 {{ record.contactName }}
@@ -332,7 +424,7 @@ onMounted(load);
                 <span v-if="record.handlesLTL" class="cc-badge bg-orange-soft text-orange">LTL</span>
               </span>
             </span>
-          </button>
+          </component>
         </li>
       </ul>
     </template>

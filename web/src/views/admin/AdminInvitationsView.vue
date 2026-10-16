@@ -103,10 +103,13 @@ async function send() {
           coverageZones: input.coverageZones,
           handlesLTL: input.handlesLTL,
           status: 'pending_invitation',
+          registered: false,
         });
       }
     } else {
-      await saveManualPreProfileAndInvite(input, auth.currentUser?.uuid ?? '');
+      const pricerEmail =
+        auth.currentUser?.role === 'pricer' ? auth.currentUser.email : undefined;
+      await saveManualPreProfileAndInvite(input, auth.currentUser?.uuid ?? '', pricerEmail);
     }
     sent.value = true;
     toast.success('Invitación enviada', displayName.value);
