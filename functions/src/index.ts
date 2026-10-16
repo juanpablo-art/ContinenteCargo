@@ -40,6 +40,12 @@ import {
 import { handleIncomingMessage, IncomingMsg } from "./messageHandler";
 import { initClaudeAI } from "./aiResponse";
 import { initConversationsAI } from "./conversations";
+import {
+  isAlreadyExistsError,
+  pricerPublishedNotices,
+  resolvePublishedLoadId,
+  PricerCandidate,
+} from "./pricerNotices";
 
 // ─── Initialize ───────────────────────────────────────────────────────────────
 
@@ -142,6 +148,62 @@ async function markNoWhatsAppIfNeeded(
 // ─── 1. onLoadPublished ───────────────────────────────────────────────────────
 // Fires when a load document transitions to status "Publicado".
 // Notifies every approved carrier whose routes match the load's route+equipment.
+// Also writes one in-app Avisos doc per approved pricer (web and iOS). Clients
+// must not write those pricer docs or each pricer would see the notice twice.
+
+async function notifyApprovedPricersOfPublishedLoad(
+  loadId: string,
+  load: LoadRecord
+): Promise<void> {
+  if (load.notificationChannels?.inApp === false) {
+    console.log(`[Load] In-app pricer notices skipped for ${load.reference} (inApp off)`);
+    return;
+  }
+
+  const snap = await admin.firestore()
+    .collection("users")
+    .where("role", "==", "pricer")
+    .get();
+  const notices = pricerPublishedNotices({
+    inApp: load.notificationChannels?.inApp,
+    loadId,
+    origin: fmtPlace(load.originCity, load.originState),
+    destination: fmtPlace(load.destinationCity, load.destinationState),
+    equipment: load.equipmentType ?? "",
+    reference: load.reference ?? "",
+    users: snap.docs.map((doc) => doc.data() as PricerCandidate),
+  });
+  if (notices.length === 0) {
+    console.log(`[Load] No in-app pricer notices for ${load.reference}`);
+    return;
+  }
+
+  const db = admin.firestore();
+  const failures: string[] = [];
+  await Promise.all(notices.map(async (notice) => {
+    try {
+      await db.collection("notifications").doc(notice.docId).create({
+        id: notice.id,
+        userId: notice.userId,
+        type: notice.type,
+        title: notice.title,
+        body: notice.body,
+        loadId: notice.loadId,
+        isRead: notice.isRead,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (err) {
+      if (isAlreadyExistsError(err)) return;
+      console.error(`[Load] Pricer in-app notice failed for ${notice.userId}:`, err);
+      failures.push(notice.userId);
+    }
+  }));
+
+  if (failures.length > 0) {
+    throw new Error(`Pricer in-app notices failed for ${failures.length} user(s)`);
+  }
+  console.log(`[Load] In-app notice for ${notices.length} approved pricers (${load.reference})`);
+}
 
 export const onLoadPublished = onDocumentWritten(
   { document: "loads/{loadId}", region: REGION, secrets: [...WA_SECRETS] },
@@ -151,7 +213,14 @@ export const onLoadPublished = onDocumentWritten(
     if (!after || after.status !== "Publicado") return;
     if (before?.status === "Publicado") return; // already handled
 
-    const loadId  = event.params.loadId;
+    const loadId = resolvePublishedLoadId(
+      (after as LoadRecord & { id?: unknown }).id,
+      event.params.loadId
+    );
+    // Before carrier email/WhatsApp, including the path that returns when
+    // nobody's route matches. create() with a stable id is safe on retry.
+    await notifyApprovedPricersOfPublishedLoad(loadId, after);
+
     const ctx     = buildContext();
     const carriers = await findMatchingCarriers(
       after.originState, after.destinationState, after.equipmentType
