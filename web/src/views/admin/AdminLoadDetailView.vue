@@ -20,7 +20,7 @@ import {
 } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
-import { LOAD_STATUSES, loadIsOpen, type LoadStatus } from '@/lib/models';
+import { LOAD_STATUSES, loadAwaitingCarrier, loadIsOpen, type LoadStatus } from '@/lib/models';
 import {
   deadlineTone,
   formatDateTime,
@@ -29,6 +29,7 @@ import {
   timeRemaining,
 } from '@/lib/format';
 import { toast } from '@/lib/toast';
+import ElapsedCounter from '@/components/ElapsedCounter.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusBadge from '@/components/StatusBadge.vue';
 import RouteTimeline from '@/components/RouteTimeline.vue';
@@ -159,6 +160,18 @@ function sendUrgency() {
               <Clock class="size-3" aria-hidden="true" />
               {{ timeRemaining(load.deadline) }}
             </span>
+          </div>
+          <div
+            v-if="loadAwaitingCarrier(load)"
+            class="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-orange-soft px-4 py-3"
+          >
+            <div class="min-w-0">
+              <p class="text-[11px] font-semibold uppercase tracking-wide text-orange">
+                Tiempo sin transportista
+              </p>
+              <p class="mt-0.5 text-xs text-ink/70">Publicada {{ formatDateTime(load.publishedAt) }}</p>
+            </div>
+            <ElapsedCounter :since="load.publishedAt" class="text-xl" />
           </div>
         </template>
       </PageHeader>

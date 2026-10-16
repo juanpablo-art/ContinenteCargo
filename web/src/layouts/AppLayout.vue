@@ -17,6 +17,7 @@ import {
 } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
+import { loadAwaitingCarrier } from '@/lib/models';
 import NotificationBell from '@/components/NotificationBell.vue';
 import { initials } from '@/lib/format';
 import type { Component } from 'vue';
@@ -135,6 +136,9 @@ const roleLabel = computed(() => {
 
 const userInitials = computed(() => initials(auth.currentUser?.name));
 const unread = computed(() => store.unreadCount);
+const openLoadCount = computed(() =>
+  auth.currentUser?.role === 'pricer' ? store.loads.filter(loadAwaitingCarrier).length : 0,
+);
 
 const todayLabel = computed(() => {
   const label = new Intl.DateTimeFormat('es-MX', {
@@ -228,6 +232,12 @@ async function logout() {
               >
                 {{ unread > 99 ? '99+' : unread }}
               </span>
+              <span
+                v-else-if="item.name === 'pricer-loads' && openLoadCount > 0"
+                class="rounded-full bg-orange px-1.5 py-px text-[10.5px] font-bold text-white"
+              >
+                {{ openLoadCount > 99 ? '99+' : openLoadCount }}
+              </span>
             </RouterLink>
           </div>
         </div>
@@ -318,10 +328,14 @@ async function logout() {
             :class="isActive(item) ? 'text-brand' : 'text-muted active:text-navy'"
           >
             <span
-              class="flex h-7 w-12 items-center justify-center rounded-full transition duration-200"
+              class="relative flex h-7 w-12 items-center justify-center rounded-full transition duration-200"
               :class="isActive(item) ? 'bg-blue-soft' : ''"
             >
               <component :is="item.icon" class="size-[19px]" :stroke-width="isActive(item) ? 2.3 : 2" aria-hidden="true" />
+              <span
+                v-if="item.name === 'pricer-loads' && openLoadCount > 0"
+                class="absolute right-1.5 top-0.5 size-2 rounded-full bg-orange ring-2 ring-card"
+              />
             </span>
             <span class="max-w-full truncate">{{ item.short || item.label }}</span>
           </RouterLink>

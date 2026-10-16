@@ -130,7 +130,7 @@ const router = createRouter({
           path: 'pricer/loads',
           name: 'pricer-loads',
           component: () => import('@/views/pricer/PricerHomeView.vue'),
-          meta: { requiresAuth: true, roles: ['pricer'] as UserRole[], title: 'Mis cargas' },
+          meta: { requiresAuth: true, roles: ['pricer'] as UserRole[], title: 'Por cubrir' },
         },
         {
           path: 'pricer/carriers',

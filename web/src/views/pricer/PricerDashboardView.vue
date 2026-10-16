@@ -3,9 +3,13 @@ import { computed } from 'vue';
 import { BadgeCheck, Truck, ChartColumn, MapPin, ArrowLeftRight, Users } from '@lucide/vue';
 import { useDataStore } from '@/stores/data';
 import { loadStatusIsActive, type AppUser, type Load } from '@/lib/models';
+import OpenLoadCard from '@/components/OpenLoadCard.vue';
 import PageHeader from '@/components/PageHeader.vue';
 
 const store = useDataStore();
+
+const openLoads = computed(() => store.openLoads());
+const openPreview = computed(() => openLoads.value.slice(0, 4));
 
 const myCarriers = computed(() => store.carriersForPricer());
 const myLoads = computed(() => store.loadsForPricer());
@@ -130,7 +134,26 @@ function initial(carrier: AppUser) {
 
 <template>
   <div class="cc-page">
-    <PageHeader title="Dashboard" subtitle="Cargas de tus transportistas" />
+    <PageHeader title="Dashboard" subtitle="Cargas publicadas sin transportista y el avance de los tuyos" />
+
+    <section class="mb-5">
+      <div class="mb-2 flex items-end justify-between gap-3">
+        <h2 class="text-sm font-semibold text-navy">Por cubrir</h2>
+        <RouterLink
+          v-if="openLoads.length"
+          :to="{ name: 'pricer-loads' }"
+          class="text-xs font-semibold text-brand"
+        >
+          Ver las {{ openLoads.length }}
+        </RouterLink>
+      </div>
+      <p v-if="!openLoads.length" class="cc-card px-4 py-5 text-sm text-muted">
+        Ninguna carga publicada está esperando transportista.
+      </p>
+      <div v-else class="space-y-2">
+        <OpenLoadCard v-for="load in openPreview" :key="load.id" :load="load" />
+      </div>
+    </section>
 
     <div class="grid grid-cols-3 gap-2 sm:gap-3">
       <article class="cc-card min-w-0 p-3 sm:p-4">

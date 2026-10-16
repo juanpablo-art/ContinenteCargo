@@ -30,6 +30,7 @@ import {
   updateUserStatus,
 } from '@/lib/firestore-data';
 import {
+  loadAwaitingCarrier,
   loadIsFull,
   newUuid,
   phoneDigits,
@@ -309,6 +310,14 @@ export const useDataStore = defineStore('data', {
         if (load.assignedCarrierId && carrierIds.has(load.assignedCarrierId)) return true;
         return load.confirmedCarrierIds.some((id) => carrierIds.has(id));
       });
+    },
+
+    /** Every published load that no carrier has taken yet. Shared by all pricers. */
+    openLoads(): Load[] {
+      return this.loads
+        .filter(loadAwaitingCarrier)
+        .slice()
+        .sort((a, b) => a.publishedAt.getTime() - b.publishedAt.getTime());
     },
 
     async assignPricerToCarrier(carrierId: string, pricerId: string | null) {

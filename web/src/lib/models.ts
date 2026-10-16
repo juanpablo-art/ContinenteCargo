@@ -361,6 +361,13 @@ export function loadIsOpen(
   return load.status === 'Publicado' && new Date() < load.deadline && !loadIsFull(load);
 }
 
+/** Published and still missing a carrier. Every pricer can work these. */
+export function loadAwaitingCarrier(
+  load: Pick<Load, 'status' | 'unitCount' | 'confirmedUnitCount' | 'assignedCarrierId'>,
+): boolean {
+  return load.status === 'Publicado' && !load.assignedCarrierId && !loadIsFull(load);
+}
+
 export function loadStatusIsActive(status: LoadStatus): boolean {
   return status !== 'Entregado' && status !== 'Cancelado';
 }
