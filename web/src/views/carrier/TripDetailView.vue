@@ -2,8 +2,9 @@
 import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { Check, ExternalLink, Phone, User, MapPinOff, ArrowRight } from '@lucide/vue';
+import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
-import type { LoadStatus } from '@/lib/models';
+import { unitsTakenByCarrier, type LoadStatus } from '@/lib/models';
 import { formatDateTime, formatMoney } from '@/lib/format';
 import { toast } from '@/lib/toast';
 import PageHeader from '@/components/PageHeader.vue';
@@ -13,6 +14,7 @@ import EmptyState from '@/components/EmptyState.vue';
 import ConfirmModal from '@/components/ConfirmModal.vue';
 
 const route = useRoute();
+const auth = useAuthStore();
 const store = useDataStore();
 
 const loadId = computed(() => String(route.params.id));
@@ -48,6 +50,23 @@ const nextStatus = computed(() => {
 const showPrivate = computed(() =>
   load.value ? store.canSeePrivateFields(load.value) : false,
 );
+
+const takenUnits = computed(() => {
+  const current = load.value;
+  const carrierId = auth.currentUser?.uuid;
+  if (!current || !carrierId) return 0;
+  return unitsTakenByCarrier(current, store.offers, carrierId);
+});
+
+const tripPrice = computed(() =>
+  load.value ? (load.value.assignedPriceSinIVA ?? load.value.offeredPrice) : 0,
+);
+
+const unitsLabel = computed(() => {
+  const current = load.value;
+  if (!current || current.unitCount <= 1 || takenUnits.value <= 0) return '';
+  return `Tomaste ${takenUnits.value} de ${current.unitCount} unidades`;
+});
 
 function changeFor(status: LoadStatus) {
   return load.value?.statusHistory.find((s) => s.status === status);
@@ -91,6 +110,7 @@ async function advance() {
           <div class="mt-3 flex flex-wrap gap-2">
             <StatusBadge :status="load.status" />
             <span class="cc-badge bg-navy/[0.06] text-navy">{{ load.equipmentType }}</span>
+            <span v-if="unitsLabel" class="cc-badge bg-blue-soft text-brand">{{ unitsLabel }}</span>
           </div>
         </template>
       </PageHeader>
@@ -179,9 +199,27 @@ async function advance() {
         <aside class="min-w-0 space-y-4 lg:sticky lg:top-24">
           <div class="cc-card overflow-hidden">
             <div class="bg-gradient-to-br from-navy to-navy-soft p-5 text-white">
-              <p class="text-[12px] font-medium text-white/65">Tarifa del viaje</p>
+              <p class="text-[12px] font-medium text-white/65">
+                {{ load.unitCount > 1 ? 'Tarifa por unidad' : 'Tarifa del viaje' }}
+              </p>
               <p class="mt-1 text-[28px] font-bold leading-none tracking-[-0.02em] tabular-nums">
-                {{ formatMoney(load.assignedPriceSinIVA ?? load.offeredPrice, load.currency) }}
+                {{ formatMoney(tripPrice, load.currency) }}
+              </p>
+              <p v-if="unitsLabel" class="mt-3 text-sm font-semibold text-white">
+                {{ unitsLabel }}
+              </p>
+              <p
+                v-if="unitsLabel && load.unitCount - load.confirmedUnitCount > 0"
+                class="mt-1 text-[12.5px] text-white/75"
+              >
+                Quedan {{ load.unitCount - load.confirmedUnitCount }} por cubrir
+              </p>
+              <p
+                v-if="unitsLabel"
+                class="mt-2 text-[12.5px] text-white/80"
+              >
+                Total de tus unidades:
+                {{ formatMoney(tripPrice * takenUnits, load.currency) }}
               </p>
               <p class="mt-2 text-[12.5px] text-white/70">
                 {{ load.includesVAT ? 'IVA incluido' : 'Más IVA' }}

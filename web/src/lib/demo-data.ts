@@ -132,7 +132,8 @@ export function demoLoads(): Load[] {
       status: 'Asignado',
       assignedCarrierId: DEMO,
       confirmedCarrierIds: [DEMO],
-      confirmedUnitCount: 1,
+      unitCount: 5,
+      confirmedUnitCount: 2,
       originCity: 'San Luis Potosí',
       originState: 'S.L.P.',
       destinationCity: 'Mérida',
@@ -230,6 +231,7 @@ export function demoOffers(): Offer[] {
     { ...base, id: 'o2', loadId: 'l1', carrierId: DEMO, carrierName: 'Transportes del Norte', amount: 38500, proposedPrice: 36800, status: 'PendienteAprobacion', submittedAt: at(-2 * H) },
     { ...base, id: 'o3', loadId: 'l3', carrierId: 'c9', carrierName: 'Fletes Rápidos Saltillo', amount: 18900, availableUnitCount: 2, proposedPrice: 18200, status: 'PendienteAprobacion', submittedAt: at(-3 * H) },
     { ...base, id: 'o4', loadId: 'l5', carrierId: DEMO, carrierName: 'Transportes del Norte', amount: 64200, status: 'Ganadora', submittedAt: at(-3 * D) },
+    { ...base, id: 'o5', loadId: 'l6', carrierId: DEMO, carrierName: 'Transportes del Norte', amount: 52700, proposedPrice: 52700, availableUnitCount: 2, status: 'Ganadora', submittedAt: at(-1 * D) },
   ];
 }
 

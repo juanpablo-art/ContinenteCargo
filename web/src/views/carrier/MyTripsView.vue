@@ -1,16 +1,28 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { Route as RouteIcon, CalendarDays, Container, ChevronRight } from '@lucide/vue';
+import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
 import EmptyState from '@/components/EmptyState.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import StatusBadge from '@/components/StatusBadge.vue';
 import TripProgress from '@/components/TripProgress.vue';
-import { loadStatusIsActive } from '@/lib/models';
+import { loadStatusIsActive, unitsTakenByCarrier } from '@/lib/models';
 import { formatMoney, formatShortDate } from '@/lib/format';
 
+const auth = useAuthStore();
 const store = useDataStore();
 const tab = ref<'active' | 'past'>('active');
+
+function unitsLabel(loadId: string, unitCount: number) {
+  const carrierId = auth.currentUser?.uuid;
+  if (!carrierId || unitCount <= 1) return '';
+  const load = store.loads.find((item) => item.id === loadId);
+  if (!load) return '';
+  const taken = unitsTakenByCarrier(load, store.offers, carrierId);
+  if (taken <= 0) return '';
+  return `${taken} de ${unitCount} unidades`;
+}
 
 const trips = computed(() =>
   store
@@ -93,6 +105,9 @@ const shown = computed(() => (tab.value === 'active' ? active.value : past.value
             <span class="inline-flex items-center gap-1.5">
               <Container class="size-3.5" aria-hidden="true" />
               {{ load.equipmentType }}
+            </span>
+            <span v-if="unitsLabel(load.id, load.unitCount)" class="font-semibold text-brand">
+              {{ unitsLabel(load.id, load.unitCount) }}
             </span>
           </div>
           <span class="cc-money text-sm">{{ formatMoney(load.offeredPrice, load.currency) }}</span>

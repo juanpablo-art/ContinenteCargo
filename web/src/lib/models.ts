@@ -355,6 +355,39 @@ export function loadIsFull(load: Pick<Load, 'unitCount' | 'confirmedUnitCount'>)
   return load.unitCount > 0 && load.confirmedUnitCount >= load.unitCount;
 }
 
+/**
+ * Units this carrier committed on a trip. Winning offers are the source,
+ * because a load of 5 can be taken in pieces (2 + 1) by the same person.
+ * If no offer was stored, the confirmed total is used when they are the only carrier.
+ */
+export function unitsTakenByCarrier(
+  load: Pick<
+    Load,
+    'id' | 'unitCount' | 'confirmedUnitCount' | 'assignedCarrierId' | 'confirmedCarrierIds'
+  >,
+  offers: Pick<Offer, 'loadId' | 'carrierId' | 'status' | 'availableUnitCount'>[],
+  carrierId: string,
+): number {
+  const fromOffers = offers
+    .filter(
+      (offer) =>
+        offer.loadId === load.id &&
+        offer.carrierId === carrierId &&
+        offer.status === 'Ganadora',
+    )
+    .reduce((sum, offer) => sum + Math.max(0, offer.availableUnitCount || 0), 0);
+  if (fromOffers > 0) return fromOffers;
+
+  const isMine =
+    load.assignedCarrierId === carrierId || load.confirmedCarrierIds.includes(carrierId);
+  if (!isMine) return 0;
+  const onlyMine =
+    load.confirmedCarrierIds.length > 0 &&
+    load.confirmedCarrierIds.every((id) => id === carrierId);
+  if (onlyMine && load.confirmedUnitCount > 0) return load.confirmedUnitCount;
+  return load.unitCount <= 1 ? 1 : 0;
+}
+
 export function loadIsOpen(
   load: Pick<Load, 'status' | 'deadline' | 'unitCount' | 'confirmedUnitCount'>,
 ): boolean {
