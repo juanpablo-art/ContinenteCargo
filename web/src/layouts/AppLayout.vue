@@ -94,10 +94,11 @@ const pricerGroups: NavGroup[] = [
     items: [
       { name: 'pricer-dashboard', label: 'Inicio', icon: LayoutDashboard, mobile: true },
       { name: 'pricer-loads', label: 'Cargas', icon: Package, match: ['admin-load-detail'], mobile: true },
-      { name: 'pricer-carriers', label: 'Transportistas', icon: Users, mobile: true },
+      { name: 'pricer-carriers', label: 'Transportistas', short: 'Transp.', icon: Users, mobile: true },
       {
         name: 'pricer-directory',
         label: 'Directorio',
+        short: 'Directorio',
         icon: BookUser,
         match: ['pricer-invitations'],
         mobile: true,
@@ -106,7 +107,7 @@ const pricerGroups: NavGroup[] = [
   },
   {
     label: 'Cuenta',
-    items: [{ name: 'profile', label: 'Perfil', icon: UserCircle }],
+    items: [{ name: 'profile', label: 'Perfil', icon: UserCircle, mobile: true }],
   },
 ];
 

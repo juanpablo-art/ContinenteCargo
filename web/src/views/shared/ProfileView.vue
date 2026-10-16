@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { Mail, Phone, ShieldCheck, LogOut, Plus, X, ArrowRight, ArrowLeftRight, Boxes } from '@lucide/vue';
+import { Mail, Phone, ShieldCheck, LogOut, Plus, X, ArrowRight, ArrowLeftRight, Boxes, Settings } from '@lucide/vue';
 import { useAuthStore } from '@/stores/auth';
 import { useDataStore } from '@/stores/data';
 import {
@@ -33,6 +33,38 @@ const newOrigin = ref('N.L.');
 const newDest = ref('CDMX');
 const newBidirectional = ref(true);
 const newEquipment = ref<EquipmentType[]>([]);
+
+const profileName = ref('');
+const profilePhone = ref('');
+const savingProfile = ref(false);
+
+watch(
+  user,
+  (next) => {
+    if (!next || savingProfile.value) return;
+    profileName.value = next.name;
+    profilePhone.value = next.phone;
+  },
+  { immediate: true },
+);
+
+const profileDirty = computed(
+  () =>
+    profileName.value.trim() !== (user.value?.name ?? '') ||
+    profilePhone.value.trim() !== (user.value?.phone ?? ''),
+);
+
+async function saveProfile() {
+  savingProfile.value = true;
+  try {
+    await store.updateOwnProfile(profileName.value, profilePhone.value);
+    toast.success('Perfil actualizado', 'Tus datos de contacto quedaron guardados.');
+  } catch (err) {
+    toast.error('No se pudo guardar el perfil', err instanceof Error ? err.message : undefined);
+  } finally {
+    savingProfile.value = false;
+  }
+}
 
 const roleLabel = computed(() => {
   switch (user.value?.role) {
@@ -141,6 +173,59 @@ async function logout() {
           </div>
         </dl>
       </div>
+    </section>
+
+    <section v-if="user.role === 'pricer'" class="cc-card p-5">
+      <div class="flex items-start gap-4">
+        <span class="cc-icon-tile"><Settings class="size-[18px]" aria-hidden="true" /></span>
+        <div class="min-w-0">
+          <h2 class="cc-h2">Configuración</h2>
+          <p class="mt-0.5 text-[13px] text-muted">
+            Edita tu nombre y teléfono cuando haga falta. El correo es el de tu acceso y el de las invitaciones.
+          </p>
+        </div>
+      </div>
+
+      <form class="mt-5 space-y-4" @submit.prevent="saveProfile">
+        <div>
+          <label class="cc-label" for="profile-name">Nombre</label>
+          <input
+            id="profile-name"
+            v-model="profileName"
+            type="text"
+            autocomplete="name"
+            maxlength="80"
+            required
+            class="cc-field"
+          />
+        </div>
+        <div>
+          <label class="cc-label" for="profile-phone">Teléfono</label>
+          <input
+            id="profile-phone"
+            v-model="profilePhone"
+            type="tel"
+            autocomplete="tel"
+            maxlength="30"
+            class="cc-field"
+          />
+        </div>
+        <div>
+          <label class="cc-label" for="profile-email">Correo</label>
+          <input
+            id="profile-email"
+            :value="user.email"
+            type="email"
+            autocomplete="email"
+            disabled
+            class="cc-field disabled:bg-background disabled:text-muted"
+          />
+          <p class="cc-hint">Este correo no se cambia desde aquí.</p>
+        </div>
+        <button type="submit" class="cc-btn w-full sm:w-auto" :disabled="savingProfile || !profileDirty">
+          {{ savingProfile ? 'Guardando…' : 'Guardar perfil' }}
+        </button>
+      </form>
     </section>
 
     <section v-if="user.role === 'carrier'" class="cc-card flex items-center gap-4 p-5">

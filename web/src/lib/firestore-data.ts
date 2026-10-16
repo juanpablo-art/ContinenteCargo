@@ -536,6 +536,16 @@ export async function updateUserLTL(handlesLTL: boolean): Promise<void> {
   await updateDoc(doc(db, 'users', uid), { handlesLTL });
 }
 
+export async function updateOwnProfile(name: string, phone: string): Promise<void> {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Usuario no autenticado');
+  const digits = phone.replace(/\D/g, '');
+  const payload: DocumentData = { name, phone };
+  if (digits.length >= 10 && digits.length <= 15) payload.phoneDigits = digits;
+  else payload.phoneDigits = deleteField();
+  await updateDoc(doc(db, 'users', uid), payload);
+}
+
 export async function fetchUserByPhone(phone: string): Promise<AppUser | null> {
   const digits = phone.replace(/\D/g, '');
   if (digits.length < 10 || digits.length > 15) return null;

@@ -599,10 +599,34 @@ service cloud.firestore {
       allow update: if isAdmin() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pricerId']) &&
         (!('pricerId' in request.resource.data) || isUuid(request.resource.data.pricerId));
-      // Dueño: puede actualizar rutas y preferencias de perfil
+      // Dueño: puede editar su perfil (nombre y teléfono) y sus preferencias.
+      // El correo, el rol y el estado no se cambian desde aquí.
       allow update: if isOwner(userId) &&
         request.resource.data.status == resource.data.status &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.uuid == resource.data.uuid &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['name']) ||
+          (
+            request.resource.data.name is string &&
+            request.resource.data.name.size() > 0 &&
+            request.resource.data.name.size() <= 80
+          )
+        ) &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['phone']) ||
+          (
+            request.resource.data.phone is string &&
+            request.resource.data.phone.size() <= 30
+          )
+        ) &&
+        (
+          !('phoneDigits' in request.resource.data) ||
+          request.resource.data.phoneDigits.matches('^\\d{10,15}$')
+        ) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'phone', 'phoneDigits',
           'routes', 'handlesLTL', 'handlesLocal', 'handlesIntraState',
           'coverageZones', 'coverageStates', 'coverageEquipmentTypes',
           'coversUSA', 'coverageUSAStates',

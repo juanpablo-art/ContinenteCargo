@@ -24,6 +24,7 @@ import {
   updateOfferFields,
   updateUnitFields,
   updateCarrierPricer,
+  updateOwnProfile as saveOwnProfile,
   updateUserLTL,
   updateUserRoutes,
   updateUserStatus,
@@ -1167,6 +1168,35 @@ export const useDataStore = defineStore('data', {
       if (!auth.currentUser) return;
       auth.currentUser = { ...auth.currentUser, handlesLTL: value };
       await updateUserLTL(value);
+    },
+
+    async updateOwnProfile(name: string, phone: string) {
+      const auth = useAuthStore();
+      const user = auth.currentUser;
+      if (!user) return;
+      const trimmedName = name.trim();
+      const trimmedPhone = phone.trim();
+      if (!trimmedName || trimmedName.length > 80) {
+        throw new Error('Escribe un nombre de hasta 80 caracteres.');
+      }
+      if (trimmedPhone.length > 30) {
+        throw new Error('El teléfono es demasiado largo.');
+      }
+      const digits = phoneDigits(trimmedPhone);
+      const previous = { ...user };
+      auth.currentUser = {
+        ...user,
+        name: trimmedName,
+        phone: trimmedPhone,
+        phoneDigits: digits.length >= 10 && digits.length <= 15 ? digits : undefined,
+      };
+      if (user.uuid === 'demo-layout' || user.uuid === 'p1') return;
+      try {
+        await saveOwnProfile(trimmedName, trimmedPhone);
+      } catch (err) {
+        auth.currentUser = previous;
+        throw err;
+      }
     },
 
     async lookupOperator(phone: string): Promise<AppUser | null> {
