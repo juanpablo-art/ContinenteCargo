@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Download,
   UserPlus,
-  MessageCircle,
   Check,
   Send,
   UserCheck,
@@ -111,7 +110,7 @@ const filtered = computed(() => {
 
 const selectable = computed(() => (isAdmin.value ? [] : filtered.value.filter((r) => canInvite(r))));
 const selectedRecords = computed(() =>
-  selectable.value.filter((r) => selected.value.has(r.id)),
+  records.value.filter((r) => selected.value.has(r.id) && canInvite(r)),
 );
 const selectedWithPhone = computed(() => selectedRecords.value.filter((r) => directoryPhone(r.phone)));
 const selectedWithEmail = computed(() => selectedRecords.value.filter((r) => r.email.includes('@')));
@@ -238,12 +237,6 @@ async function deliver(
   }
 }
 
-function send(channel: 'whatsapp' | 'email') {
-  const targets = channel === 'whatsapp' ? selectedWithPhone.value : selectedWithEmail.value;
-  const label = channel === 'whatsapp' ? 'WhatsApp' : 'correo';
-  return deliver(targets, channel, label);
-}
-
 function inviteQueue(targets: CarrierDirectoryRecord[]) {
   const whatsapp = targets.filter((r) => directoryPhone(r.phone)).length;
   const email = targets.length - whatsapp;
@@ -252,12 +245,8 @@ function inviteQueue(targets: CarrierDirectoryRecord[]) {
   return deliver(targets, 'auto', label);
 }
 
-function inviteUnsent() {
-  return inviteQueue(unsent.value);
-}
-
-function resendWaiting() {
-  return inviteQueue(retriable.value);
+function sendSelected() {
+  return inviteQueue(selectedRecords.value);
 }
 
 onMounted(load);
@@ -267,10 +256,10 @@ onMounted(load);
   <div class="cc-page" :class="selected.size ? 'pb-28' : ''">
     <PageHeader
       :title="`Directorio${records.length ? ` (${records.length})` : ''}`"
-      :subtitle="
+          :subtitle="
         isAdmin
           ? 'Los pricers envían las invitaciones y revisan que cada registro quede bien'
-          : 'Tú envías las invitaciones y das seguimiento hasta que el registro quede listo'
+          : 'Selecciona los transportistas y envía las invitaciones. Luego da seguimiento al registro.'
       "
       :back="isAdmin ? { name: 'admin-carriers' } : undefined"
       back-label="Transportistas"
@@ -350,40 +339,34 @@ onMounted(load);
             {{
               isAdmin
                 ? 'Desde aquí ves el avance. El envío y el seguimiento los hace cada pricer.'
-                : unsent.length
-                  ? 'Envíalas tú. Después, en Seguimiento, ves quién no se registró o quién quedó con un problema.'
-                  : retriable.length
-                    ? 'La invitación ya salió. Si no se registran, reenvíala y revisa que la cuenta quede aprobada.'
-                    : 'Quien ya se registró está en Listos. Si alguno tiene un problema, aparece en Seguimiento.'
+                : 'Marca uno, varios o todos. La invitación sale solo a los que seleccionaste.'
             }}
           </p>
         </div>
-        <button
-          v-if="!isAdmin && unsent.length"
-          type="button"
-          class="cc-btn h-11 w-full shrink-0 px-4 sm:w-auto"
-          :disabled="sending"
-          @click="inviteUnsent"
-        >
-          <Send class="size-4" aria-hidden="true" />
-          {{
-            sending
-              ? 'Enviando…'
-              : unsent.length === 1
-                ? 'Enviar 1 invitación'
-                : `Enviar ${unsent.length} invitaciones`
-          }}
-        </button>
-        <button
-          v-else-if="!isAdmin && retriable.length"
-          type="button"
-          class="cc-btn-secondary h-11 w-full shrink-0 px-4 sm:w-auto"
-          :disabled="sending"
-          @click="resendWaiting"
-        >
-          <Send class="size-4" aria-hidden="true" />
-          {{ sending ? 'Enviando…' : `Reenviar a ${retriable.length}` }}
-        </button>
+        <div v-if="!isAdmin && selectable.length" class="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
+          <button type="button" class="cc-btn-secondary h-11 w-full px-4 sm:w-auto" @click="toggleAll">
+            <Check class="size-4" aria-hidden="true" />
+            {{ allFilteredSelected ? 'Quitar selección' : `Seleccionar todos (${selectable.length})` }}
+          </button>
+          <button
+            v-if="selectedRecords.length"
+            type="button"
+            class="cc-btn h-11 w-full px-4 sm:w-auto"
+            :disabled="sending"
+            @click="sendSelected"
+          >
+            <Send class="size-4" aria-hidden="true" />
+            {{
+              sending
+                ? 'Enviando…'
+                : selectedRecords.length
+                  ? selectedRecords.length === 1
+                    ? 'Enviar 1 invitación'
+                    : `Enviar ${selectedRecords.length} invitaciones`
+                  : 'Enviar invitaciones'
+            }}
+          </button>
+        </div>
       </section>
 
       <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -415,14 +398,6 @@ onMounted(load);
               placeholder="Empresa, contacto, ciudad o teléfono"
             />
           </label>
-          <button
-            v-if="selectable.length"
-            type="button"
-            class="cc-btn-secondary h-11 w-auto shrink-0 px-3 text-[13px]"
-            @click="toggleAll"
-          >
-            {{ allFilteredSelected ? 'Quitar' : 'Seleccionar' }}
-          </button>
         </div>
       </div>
 
@@ -508,35 +483,30 @@ onMounted(load);
       v-if="!isAdmin && selected.size"
       class="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 border-t border-line bg-card/95 px-4 py-3 shadow-elevated backdrop-blur md:bottom-0 md:left-[248px]"
     >
-      <div class="mx-auto flex max-w-6xl items-center gap-3">
+      <div class="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center">
         <div class="min-w-0">
           <p class="text-sm font-semibold text-navy">
-            {{ selected.size }} seleccionado{{ selected.size === 1 ? '' : 's' }}
+            {{ selectedRecords.length }} seleccionado{{ selectedRecords.length === 1 ? '' : 's' }}
           </p>
           <p class="text-[11px] text-muted">
             {{ selectedWithPhone.length }} WhatsApp · {{ selectedWithEmail.length }} correo
           </p>
         </div>
-        <div class="ml-auto flex gap-2">
-          <button
-            type="button"
-            class="cc-btn h-10 w-auto bg-[#3cbc54] px-3 shadow-none hover:bg-[#34a84a]"
-            :disabled="!selectedWithPhone.length || sending"
-            @click="send('whatsapp')"
-          >
-            <MessageCircle class="size-4" aria-hidden="true" />
-            WA ({{ selectedWithPhone.length }})
-          </button>
-          <button
-            type="button"
-            class="cc-btn h-10 w-auto px-3"
-            :disabled="!selectedWithEmail.length || sending"
-            @click="send('email')"
-          >
-            <Mail class="size-4" aria-hidden="true" />
-            Email ({{ selectedWithEmail.length }})
-          </button>
-        </div>
+        <button
+          type="button"
+          class="cc-btn h-11 w-full px-4 sm:ml-auto sm:w-auto"
+          :disabled="!selectedRecords.length || sending"
+          @click="sendSelected"
+        >
+          <Send class="size-4" aria-hidden="true" />
+          {{
+            sending
+              ? 'Enviando…'
+              : selectedRecords.length === 1
+                ? 'Enviar 1 invitación'
+                : `Enviar ${selectedRecords.length} invitaciones`
+          }}
+        </button>
       </div>
     </div>
     </Teleport>
