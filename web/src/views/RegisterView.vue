@@ -83,7 +83,6 @@ const originState = ref('N.L.');
 const destinationState = ref('CDMX');
 const bidirectional = ref(true);
 const routeEquipment = ref<Set<EquipmentType>>(new Set());
-const finishEquipmentError = ref(false);
 const routeEquipmentError = ref(false);
 const coversUSA = ref(false);
 const coverageUSAStates = ref<Set<string>>(new Set());
@@ -116,9 +115,28 @@ const canAddRoute = computed(
   () => routeEquipment.value.size > 0 && !alreadyAdded.value && routes.value.length < 12,
 );
 
+const missingZone = computed(
+  () => coverageMode.value === 'zone' && selectedStates.value.size === 0,
+);
+const missingUnit = computed(
+  () => coverageMode.value === 'zone' && coverageEquipment.value.size === 0,
+);
+
 const canFinish = computed(() => {
-  if (coverageMode.value === 'zone') return selectedStates.value.size > 0;
-  return routes.value.length > 0;
+  if (coverageMode.value === 'zone') return !missingZone.value && !missingUnit.value;
+  return routes.value.length > 0 && routes.value.every((route) => route.equipmentTypes.length > 0);
+});
+
+const finishHint = computed(() => {
+  if (coverageMode.value === 'zone') {
+    if (missingZone.value && missingUnit.value) {
+      return 'Selecciona al menos una zona y una unidad para continuar';
+    }
+    if (missingZone.value) return 'Selecciona al menos una zona para continuar';
+    return 'Selecciona al menos una unidad para continuar';
+  }
+  if (!routes.value.length) return 'Agrega al menos una ruta para continuar';
+  return 'Cada ruta necesita al menos una unidad';
 });
 
 const addRouteLabel = computed(() => {
@@ -197,16 +215,11 @@ watch(newWhatsappInput, () => {
   whatsappCheckError.value = '';
 });
 
-watch(coverageMode, () => {
-  finishEquipmentError.value = false;
-});
-
 function toggleCoverageEquipment(eq: EquipmentType) {
   const next = new Set(coverageEquipment.value);
   if (next.has(eq)) next.delete(eq);
   else next.add(eq);
   coverageEquipment.value = next;
-  if (next.size) finishEquipmentError.value = false;
 }
 
 function toggleRouteEquipment(eq: EquipmentType) {
@@ -287,10 +300,6 @@ function goBack() {
 
 async function submit() {
   if (coverageMode.value === 'route' && canAddRoute.value) addRoute();
-  if (coverageMode.value === 'zone' && coverageEquipment.value.size === 0) {
-    finishEquipmentError.value = true;
-    return;
-  }
   if (!canFinish.value) return;
 
   auth.clearError();
@@ -680,12 +689,12 @@ function goLogin() {
 
         <div
           class="rounded-[10px] border bg-card p-3"
-          :class="finishEquipmentError ? 'border-danger' : 'border-line'"
+          :class="missingUnit && selectedStates.size ? 'border-danger' : 'border-line'"
         >
-          <p class="cc-label" :class="finishEquipmentError ? 'text-danger' : ''">
+          <p class="cc-label" :class="missingUnit && selectedStates.size ? 'text-danger' : ''">
             Equipo que opero *
           </p>
-          <p v-if="!coverageEquipment.size" class="mb-2 text-sm" :class="finishEquipmentError ? 'text-danger' : 'text-muted'">
+          <p v-if="!coverageEquipment.size" class="mb-2 text-sm" :class="missingUnit && selectedStates.size ? 'text-danger' : 'text-muted'">
             Selecciona el tipo de equipo (obligatorio)
           </p>
           <div class="flex flex-wrap gap-2">
@@ -701,9 +710,9 @@ function goLogin() {
               {{ eq }}
             </button>
           </div>
-          <p v-if="finishEquipmentError" class="mt-2 flex items-start gap-1.5 text-xs text-danger">
+          <p v-if="missingUnit && selectedStates.size" class="mt-2 flex items-start gap-1.5 text-xs text-danger">
             <CircleAlert class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-            Selecciona el equipo que operas antes de solicitar el registro
+            Selecciona al menos una unidad para continuar
           </p>
         </div>
       </div>
@@ -843,16 +852,18 @@ function goLogin() {
         {{ auth.errorMessage }}
       </p>
 
-      <button type="button" class="cc-btn" :disabled="!canFinish || auth.isLoading" @click="submit">
+      <button
+        type="button"
+        class="cc-btn"
+        :disabled="!canFinish || auth.isLoading"
+        :aria-describedby="canFinish ? undefined : 'finish-hint'"
+        @click="submit"
+      >
         <LoaderCircle v-if="auth.isLoading" class="size-4 animate-spin" aria-hidden="true" />
         Solicitar registro
       </button>
-      <p v-if="!canFinish" class="text-center text-xs text-muted">
-        {{
-          coverageMode === 'zone'
-            ? 'Selecciona al menos una zona para continuar'
-            : 'Agrega al menos una ruta para continuar'
-        }}
+      <p v-if="!canFinish" id="finish-hint" class="text-center text-xs text-muted">
+        {{ finishHint }}
       </p>
     </div>
   </div>
