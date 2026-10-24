@@ -1,0 +1,13 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+captures/
+.cxx/
+*.jks
+*.keystore
+google-services.json
+google-services.json.bak
+**/serviceAccount*.json
+**/*-firebase-adminsdk-*.json
