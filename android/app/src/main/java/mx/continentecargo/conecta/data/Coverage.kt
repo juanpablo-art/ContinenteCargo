@@ -126,9 +126,10 @@ fun myTrips(
 
 fun myUnits(profile: CarrierProfile?, units: List<FleetUnit>): List<FleetUnit> {
     profile ?: return emptyList()
-    return units.filter { unit ->
-        unit.notes != "availability_post" &&
-            (unit.ownerId == profile.uuid || (profile.companyId != null && unit.ownerId == profile.companyId))
+    val fleet = units.filter { it.notes != "availability_post" }
+    if (profile.role == "admin") return fleet
+    return fleet.filter { unit ->
+        unit.ownerId == profile.uuid || (profile.companyId != null && unit.ownerId == profile.companyId)
     }
 }
 
@@ -141,6 +142,7 @@ fun eligibleUnits(profile: CarrierProfile?, units: List<FleetUnit>, load: Freigh
 
 fun canSeePrivate(profile: CarrierProfile?, load: FreightLoad): Boolean {
     profile ?: return false
+    if (profile.role == "admin" || profile.role == "pricer") return true
     return load.assignedCarrierId == profile.uuid || profile.uuid in load.confirmedCarrierIds
 }
 
@@ -150,20 +152,116 @@ fun needsCounterOffer(load: FreightLoad, price: Double): Boolean {
     return if (max != null) price > max else true
 }
 
+private val pricerSelectionIds = setOf(
+    "033cdbf4-e582-4989-9c46-9b2c1fdc2f82",
+    "d3fe5bc5-a742-4d39-87ca-b5debd4d54e3",
+    "9bb57c62-e618-4327-9b96-ab56041168b7",
+    "600c90fc-55a8-449d-aec8-443cafa6f754",
+    "e3665e48-db1f-45bd-9464-276fcac0be93",
+    "0ac6a641-a03f-4f1e-b88f-fa1acd5fad87",
+    "0035c5e5-5764-4023-87e2-0d6362e8de3d",
+)
+
+private val pricerSelectionEmails = setOf(
+    "delaorcasa@outlook.com",
+    "anaid.nava@irisaleados.com.mx",
+    "gabrielloyola291@gmail.com",
+    "transportestramuve@gmail.com",
+    "j.gonzalez@progra.mx",
+    "presidencia.ayc.transportes@gmail.com",
+    "monterrey@wolfast.mx",
+)
+
+fun needsPricerSelection(profile: CarrierProfile): Boolean {
+    val mail = profile.email.trim().lowercase()
+    if (profile.uuid !in pricerSelectionIds && mail !in pricerSelectionEmails) return false
+    return profile.pricerId.isNullOrBlank()
+}
+
 fun gate(profile: CarrierProfile?): Gate {
     if (profile == null) {
         return Gate.Deny("Usuario autenticado pero sin perfil. Contacta al administrador.")
     }
-    if (profile.role !in Catalog.carrierRoles) {
-        return Gate.Deny("Esta aplicación es para transportistas. Entra con tu cuenta de línea u operador independiente.")
+    if (needsPricerSelection(profile)) {
+        return Gate.Deny("Contacta a Continente Cargo para selección de pricer.")
     }
-    if (profile.status == "suspended") {
+    if (profile.role != "admin" && profile.status == "suspended") {
         return Gate.Deny("Tu cuenta está bloqueada. Ya no puedes operar ni recibir avisos.")
     }
-    if (profile.status != "approved") {
+    if (profile.role == "client" && profile.status == "pending_approval") {
+        return Gate.Deny("Tu cuenta está en espera de aceptación. Un super administrador tiene que aceptarla para que puedas entrar.")
+    }
+    if (profile.role == "client" && profile.status != "approved") {
+        return Gate.Deny("Tu solicitud de cliente no fue aceptada.")
+    }
+    if (profile.role != "admin" && profile.status != "approved") {
         return Gate.Deny("Tu cuenta está pendiente de aprobación. Te notificaremos cuando sea revisada.")
     }
+    if (profile.role !in Catalog.appRoles) {
+        return Gate.Deny("Esta cuenta no tiene acceso en la aplicación.")
+    }
     return Gate.Allow
+}
+
+fun openLoads(loads: List<FreightLoad>): List<FreightLoad> =
+    loads.filter { it.status == "Publicado" && !isFull(it) }.sortedBy { it.publishedAt.time }
+
+fun loadsForPricer(
+    profile: CarrierProfile?,
+    loads: List<FreightLoad>,
+    people: List<CarrierProfile>,
+): List<FreightLoad> {
+    profile ?: return emptyList()
+    val ids = people.filter { it.pricerId == profile.uuid }.map { it.uuid }.toSet()
+    return loads.filter { load ->
+        (load.assignedCarrierId != null && load.assignedCarrierId in ids) ||
+            load.confirmedCarrierIds.any { it in ids }
+    }
+}
+
+fun clientLoads(profile: CarrierProfile?, loads: List<FreightLoad>): List<FreightLoad> {
+    profile ?: return emptyList()
+    return loads
+        .filter { it.publishedBy == profile.uuid && it.status.isNotBlank() }
+        .sortedByDescending { it.publishedAt.time }
+}
+
+fun clientOpportunities(profile: CarrierProfile?, loads: List<FreightLoad>): List<FreightLoad> {
+    profile ?: return emptyList()
+    if (profile.routes.isEmpty() || profile.coverageEquipmentTypes.isEmpty()) return emptyList()
+    return loads.filter { load ->
+        load.status == "Publicado" &&
+            load.publishedBy != profile.uuid &&
+            load.equipmentType in profile.coverageEquipmentTypes &&
+            profile.routes.any { routeFits(it, load) }
+    }
+}
+
+fun pendingCarriers(people: List<CarrierProfile>): List<CarrierProfile> =
+    people
+        .filter { it.status == "pending_approval" && it.role != "admin" && it.role != "pricer" && it.role != "client" }
+        .sortedBy { it.name.lowercase() }
+
+fun directoryFor(profile: CarrierProfile?, people: List<CarrierProfile>): List<CarrierProfile> {
+    profile ?: return emptyList()
+    val rows = when (profile.role) {
+        "admin" -> people.filter { it.role in Catalog.carrierRoles || it.role == "client" }
+        "pricer" -> people.filter { it.pricerId == profile.uuid && it.role in Catalog.carrierRoles }
+        else -> emptyList()
+    }
+    return rows.sortedBy { it.name.lowercase() }
+}
+
+fun approvedPricers(people: List<CarrierProfile>): List<CarrierProfile> =
+    people.filter { it.role == "pricer" && it.status == "approved" }.sortedBy { it.name.lowercase() }
+
+fun availablePosts(units: List<FleetUnit>): List<FleetUnit> =
+    units.filter { it.notes == "availability_post" && it.status == "Disponible" }
+
+private fun routeFits(route: RouteCoverage, load: FreightLoad): Boolean {
+    val direct = route.originState == load.originState && route.destinationState == load.destinationState
+    val reverse = route.bidirectional && route.originState == load.destinationState && route.destinationState == load.originState
+    return direct || reverse
 }
 
 fun actionMessage(code: String, decrementLabel: String? = null): String = when (code) {

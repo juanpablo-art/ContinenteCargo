@@ -41,6 +41,7 @@ data class CarrierProfile(
     val coverageZones: List<String>,
     val coverageEquipmentTypes: List<String>,
     val coverageUSAStates: List<String>,
+    val pricerId: String? = null,
 )
 
 data class StatusEvent(
@@ -174,6 +175,8 @@ data class FleetUnit(
     val status: String,
     val operatorId: String?,
     val notes: String,
+    val postedOriginState: String? = null,
+    val postedDestinationState: String? = null,
 ) {
     fun toWriteMap(): Map<String, Any> {
         val map = mutableMapOf<String, Any>(

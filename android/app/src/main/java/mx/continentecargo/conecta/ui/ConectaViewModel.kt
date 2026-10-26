@@ -34,6 +34,8 @@ data class ConectaUi(
     val notices: List<Notice> = emptyList(),
     val passedRoutes: Set<String> = emptySet(),
     val passedLoadIds: Set<String> = emptySet(),
+    val directory: List<CarrierProfile> = emptyList(),
+    val claimedUnitIds: Set<String> = emptySet(),
     val dataError: String? = null,
     val busy: Boolean = false,
     val toast: String? = null,
@@ -309,6 +311,38 @@ class ConectaViewModel(
     fun setLtl(value: Boolean) = setFlag("handlesLTL", value)
     fun setHazmat(value: Boolean) = setFlag("handlesHazmat", value)
 
+    fun saveClientPreferences(routes: List<RouteCoverage>, equipment: List<String>) {
+        val profile = _ui.value.profile ?: return
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            try {
+                data.saveClientPreferences(profile, routes, equipment)
+                _ui.update { it.copy(toast = "Rutas guardadas") }
+            } catch (error: Exception) {
+                _ui.update { it.copy(toast = error.message ?: "No se pudieron guardar las rutas.") }
+            } finally {
+                _ui.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    fun claimRoute(unit: FleetUnit) {
+        val profile = _ui.value.profile ?: return
+        viewModelScope.launch {
+            try {
+                data.claimRoute(profile, unit)
+                _ui.update {
+                    it.copy(
+                        toast = "Avisamos que puedes tomar esa ruta.",
+                        claimedUnitIds = it.claimedUnitIds + unit.id,
+                    )
+                }
+            } catch (error: Exception) {
+                _ui.update { it.copy(toast = error.message ?: "No se pudo avisar.") }
+            }
+        }
+    }
+
     fun saveRoutes(routes: List<RouteCoverage>) {
         val profile = _ui.value.profile ?: return
         viewModelScope.launch {
@@ -369,6 +403,8 @@ class ConectaViewModel(
                                 _ui.update { it.copy(passedRoutes = routes, passedLoadIds = ids) }
                             },
                             onProfile = { profile -> onProfile(profile) },
+                            onDirectory = { people -> _ui.update { it.copy(directory = people) } },
+                            onClaims = { ids -> _ui.update { it.copy(claimedUnitIds = ids) } },
                             onError = { message -> _ui.update { it.copy(dataError = message) } },
                         )
                     }

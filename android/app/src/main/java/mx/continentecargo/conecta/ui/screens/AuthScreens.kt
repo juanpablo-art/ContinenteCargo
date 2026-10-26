@@ -112,7 +112,7 @@ fun LoginScreen(
             Spacer(Modifier.height(12.dp))
             Text("Continente Conecta", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
             Text(
-                "Plataforma de carga para transportistas.",
+                "Plataforma de carga Continente Cargo",
                 color = Color.White.copy(alpha = 0.75f),
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,

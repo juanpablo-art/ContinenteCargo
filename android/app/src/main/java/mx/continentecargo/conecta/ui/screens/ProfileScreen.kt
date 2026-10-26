@@ -50,12 +50,16 @@ fun ProfileScreen(
     onLtl: (Boolean) -> Unit,
     onHazmat: (Boolean) -> Unit,
     onRoutes: (List<RouteCoverage>) -> Unit,
+    onClientPreferences: (List<RouteCoverage>, List<String>) -> Unit,
     onNotices: () -> Unit,
     onLogout: () -> Unit,
 ) {
     var name by remember(profile.uuid) { mutableStateOf(profile.name) }
     var phone by remember(profile.uuid) { mutableStateOf(profile.phone) }
     var routes by remember(profile.uuid, profile.routes) { mutableStateOf(profile.routes) }
+    var equipment by remember(profile.uuid, profile.coverageEquipmentTypes) { mutableStateOf(profile.coverageEquipmentTypes) }
+    val carrierAccount = profile.role in Catalog.carrierRoles
+    val clientAccount = profile.role == "client"
     var origin by remember { mutableStateOf(Catalog.mexicoStates.first()) }
     var destination by remember { mutableStateOf("N.L.") }
     Column(Modifier.fillMaxSize()) {
@@ -77,6 +81,7 @@ fun ProfileScreen(
                 enabled = !busy,
                 onClick = { onSave(name, phone) },
             )
+            if (carrierAccount) {
             Text("Configuración", fontWeight = FontWeight.SemiBold)
             Toggle("Acepto cargas parciales (LTL)", profile.handlesLTL, onLtl)
             Toggle("Puedo mover materiales peligrosos con la documentación requerida.", profile.handlesHazmat, onHazmat)
@@ -122,6 +127,67 @@ fun ProfileScreen(
                 enabled = !busy,
                 onClick = { onRoutes(routes) },
             )
+            }
+            if (clientAccount) {
+                Text("Rutas y equipo", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Las oportunidades usan estas rutas y el tipo de unidad. Máximo 12 rutas.",
+                    color = Muted,
+                    fontSize = 13.sp,
+                )
+                Text("Equipo", color = Muted, fontSize = 12.sp)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Catalog.equipment.forEach { item ->
+                        FilterChip(
+                            selected = item in equipment,
+                            onClick = {
+                                equipment = if (item in equipment) equipment - item else equipment + item
+                            },
+                            label = { Text(item) },
+                        )
+                    }
+                }
+                routes.forEach { route ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${route.originState} → ${route.destinationState}" + if (route.bidirectional) " · ida y vuelta" else "",
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { routes = routes.filterNot { it.id == route.id } }) { Text("Quitar") }
+                    }
+                }
+                Text("Origen", color = Muted, fontSize = 12.sp)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Catalog.mexicoStates.forEach { state ->
+                        FilterChip(selected = origin == state, onClick = { origin = state }, label = { Text(state) })
+                    }
+                }
+                Text("Destino", color = Muted, fontSize = 12.sp)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Catalog.mexicoStates.forEach { state ->
+                        FilterChip(selected = destination == state, onClick = { destination = state }, label = { Text(state) })
+                    }
+                }
+                SecondaryButton(
+                    text = "Agregar ruta",
+                    onClick = {
+                        if (origin != destination && routes.none { it.originState == origin && it.destinationState == destination } && routes.size < 12) {
+                            routes = routes + RouteCoverage(
+                                id = UUID.randomUUID().toString(),
+                                originState = origin,
+                                destinationState = destination,
+                                bidirectional = true,
+                                equipmentTypes = emptyList(),
+                            )
+                        }
+                    },
+                )
+                PrimaryButton(
+                    text = if (busy) "Guardando…" else "Guardar rutas y equipo",
+                    enabled = !busy,
+                    onClick = { onClientPreferences(routes, equipment) },
+                )
+            }
             TextButton(onClick = onNotices) { Text("Avisos") }
             TextButton(onClick = onLogout) { Text("Cerrar sesión", color = Danger) }
         }

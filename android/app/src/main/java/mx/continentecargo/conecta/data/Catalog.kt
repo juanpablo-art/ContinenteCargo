@@ -74,6 +74,8 @@ object Catalog {
 
     val carrierRoles = setOf("carrier", "independent_operator")
 
+    val appRoles = setOf("admin", "pricer", "client", "carrier", "independent_operator")
+
     val openOfferStatuses = setOf("Activa", "Ganando", "Superada", "PendienteAprobacion")
 
     fun zoneOf(state: String): String? = zones.firstOrNull { state in it.states }?.id
@@ -86,6 +88,14 @@ object Catalog {
         "client" -> "Cliente"
         "altas" -> "Control de altas"
         else -> role
+    }
+
+    fun statusLabel(status: String): String = when (status) {
+        "approved" -> "Aprobado"
+        "pending_approval" -> "Pendiente"
+        "suspended" -> "Bloqueado"
+        "rejected" -> "Rechazado"
+        else -> status
     }
 }
 

@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import mx.continentecargo.conecta.data.Catalog
 import mx.continentecargo.conecta.data.FleetUnit
 import mx.continentecargo.conecta.data.FreightLoad
 import mx.continentecargo.conecta.data.canSeePrivate
@@ -122,7 +123,22 @@ fun LoadDetailScreen(
                     fontSize = 13.sp,
                 )
             }
-            if (open) {
+            val staff = ui.profile?.role == "admin" || ui.profile?.role == "pricer"
+            if (staff) {
+                val rows = ui.offers.filter { it.loadId == load.id }.sortedBy { it.amount }
+                SectionLabel("Ofertas")
+                if (rows.isEmpty()) {
+                    Text("Sin ofertas todavía.", color = Muted, fontSize = 13.sp)
+                }
+                rows.forEach { offer ->
+                    Text(
+                        "${offer.carrierName} · ${formatMoney(offer.amount, offer.currency)} · ${offer.status}",
+                        color = Ink,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+            if (open && ui.profile?.role in Catalog.carrierRoles) {
                 when (load.assignmentMode) {
                     "Tarifa Fija" -> FixedPanel(load, units, busy, onFixed)
                     "Subasta Inversa" -> BidPanel(load, ui, units, busy, onBid)

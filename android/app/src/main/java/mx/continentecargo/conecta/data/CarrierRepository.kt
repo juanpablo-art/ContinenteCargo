@@ -12,10 +12,14 @@ class CarrierRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) {
     private val registrations = mutableListOf<ListenerRegistration>()
+    private var clientOwnLoads: List<FreightLoad> = emptyList()
+    private var clientMarketLoads: List<FreightLoad> = emptyList()
 
     fun stop() {
         registrations.forEach { it.remove() }
         registrations.clear()
+        clientOwnLoads = emptyList()
+        clientMarketLoads = emptyList()
     }
 
     fun listen(
@@ -26,9 +30,43 @@ class CarrierRepository(
         onNotices: (List<Notice>) -> Unit,
         onPasses: (Set<String>, Set<String>) -> Unit,
         onProfile: (CarrierProfile?) -> Unit,
+        onDirectory: (List<CarrierProfile>) -> Unit,
+        onClaims: (Set<String>) -> Unit,
         onError: (String) -> Unit,
     ) {
         stop()
+        when (profile.role) {
+            "client" -> listenClient(profile, onLoads, onUnits, onClaims, onError)
+            "admin", "pricer" -> listenStaff(onLoads, onOffers, onUnits, onDirectory, onError)
+            else -> listenCarrier(profile, onLoads, onOffers, onUnits, onPasses, onError)
+        }
+        if (profile.role == "client" || profile.role in Catalog.carrierRoles) {
+            onDirectory(emptyList())
+        }
+        if (profile.role != "client") onClaims(emptySet())
+        if (profile.role != "carrier" && profile.role != "independent_operator") {
+            onPasses(emptySet(), emptySet())
+        }
+        if (profile.role == "client") onOffers(emptyList())
+        listenNotices(profile, onNotices, onError)
+        registrations += db.collection("users").document(profile.authUid)
+            .addSnapshotListener { snap, _ ->
+                if (snap == null || !snap.exists()) {
+                    onProfile(null)
+                } else {
+                    onProfile(parseProfile(profile.authUid, snapshotMap(snap.data)))
+                }
+            }
+    }
+
+    private fun listenCarrier(
+        profile: CarrierProfile,
+        onLoads: (List<FreightLoad>) -> Unit,
+        onOffers: (List<FreightOffer>) -> Unit,
+        onUnits: (List<FleetUnit>) -> Unit,
+        onPasses: (Set<String>, Set<String>) -> Unit,
+        onError: (String) -> Unit,
+    ) {
         registrations += db.collection("loads").addSnapshotListener { snap, error ->
             if (error != null) {
                 onError("No se pudieron cargar las cargas.")
@@ -36,34 +74,8 @@ class CarrierRepository(
             }
             onLoads(snap?.documents?.mapNotNull { parseLoad(it.id, snapshotMap(it.data)) }.orEmpty())
         }
-        registrations += db.collection("offers").addSnapshotListener { snap, error ->
-            if (error != null) {
-                onError("No se pudieron cargar las ofertas.")
-                return@addSnapshotListener
-            }
-            onOffers(snap?.documents?.mapNotNull { parseOffer(it.id, snapshotMap(it.data)) }.orEmpty())
-        }
-        registrations += db.collection("units").addSnapshotListener { snap, error ->
-            if (error != null) {
-                onError("No se pudieron cargar las unidades.")
-                return@addSnapshotListener
-            }
-            onUnits(snap?.documents?.mapNotNull { parseUnit(it.id, snapshotMap(it.data)) }.orEmpty())
-        }
-        registrations += db.collection("notifications")
-            .whereEqualTo("userId", profile.uuid)
-            .addSnapshotListener { snap, error ->
-                if (error != null) {
-                    onError("No se pudieron cargar los avisos.")
-                    return@addSnapshotListener
-                }
-                onNotices(
-                    snap?.documents
-                        ?.mapNotNull { parseNotice(it.id, snapshotMap(it.data)) }
-                        ?.sortedByDescending { it.createdAt.time }
-                        .orEmpty(),
-                )
-            }
+        listenOffers(onOffers, onError)
+        listenUnits(onUnits, onError)
         registrations += db.collection("load_passes")
             .whereEqualTo("carrierId", profile.uuid)
             .addSnapshotListener { snap, error ->
@@ -86,13 +98,131 @@ class CarrierRepository(
                 }
                 onPasses(routes, loads)
             }
-        registrations += db.collection("users").document(profile.authUid)
-            .addSnapshotListener { snap, _ ->
-                if (snap == null || !snap.exists()) {
-                    onProfile(null)
-                } else {
-                    onProfile(parseProfile(profile.authUid, snapshotMap(snap.data)))
+    }
+
+    private fun listenStaff(
+        onLoads: (List<FreightLoad>) -> Unit,
+        onOffers: (List<FreightOffer>) -> Unit,
+        onUnits: (List<FleetUnit>) -> Unit,
+        onDirectory: (List<CarrierProfile>) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        registrations += db.collection("loads").addSnapshotListener { snap, error ->
+            if (error != null) {
+                onError("No se pudieron cargar las cargas.")
+                return@addSnapshotListener
+            }
+            onLoads(snap?.documents?.mapNotNull { parseLoad(it.id, snapshotMap(it.data)) }.orEmpty())
+        }
+        listenOffers(onOffers, onError)
+        listenUnits(onUnits, onError)
+        registrations += db.collection("users").addSnapshotListener { snap, error ->
+            if (error != null) {
+                onError("No se pudo cargar el directorio.")
+                return@addSnapshotListener
+            }
+            onDirectory(
+                snap?.documents
+                    ?.mapNotNull { parseProfile(it.id, snapshotMap(it.data)) }
+                    ?.sortedBy { it.name.lowercase() }
+                    .orEmpty(),
+            )
+        }
+    }
+
+    private fun listenClient(
+        profile: CarrierProfile,
+        onLoads: (List<FreightLoad>) -> Unit,
+        onUnits: (List<FleetUnit>) -> Unit,
+        onClaims: (Set<String>) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        fun emitLoads() {
+            val merged = LinkedHashMap<String, FreightLoad>()
+            clientMarketLoads.forEach { merged[it.id] = it }
+            clientOwnLoads.forEach { merged[it.id] = it }
+            onLoads(merged.values.toList())
+        }
+        registrations += db.collection("loads")
+            .whereEqualTo("publishedBy", profile.uuid)
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    onError("No se pudieron cargar las cargas.")
+                    return@addSnapshotListener
                 }
+                clientOwnLoads = snap?.documents?.mapNotNull { parseLoad(it.id, snapshotMap(it.data)) }.orEmpty()
+                emitLoads()
+            }
+        registrations += db.collection("loads")
+            .whereEqualTo("status", "Publicado")
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    onError("No se pudieron cargar las oportunidades.")
+                    return@addSnapshotListener
+                }
+                clientMarketLoads = snap?.documents?.mapNotNull { parseLoad(it.id, snapshotMap(it.data)) }.orEmpty()
+                emitLoads()
+            }
+        registrations += db.collection("units")
+            .whereEqualTo("notes", "availability_post")
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    onError("No se pudieron cargar las unidades.")
+                    return@addSnapshotListener
+                }
+                onUnits(
+                    snap?.documents
+                        ?.mapNotNull { parseUnit(it.id, snapshotMap(it.data)) }
+                        ?.filter { it.notes == "availability_post" && it.status == "Disponible" }
+                        .orEmpty(),
+                )
+            }
+        registrations += db.collection("client_interests")
+            .whereEqualTo("clientId", profile.uuid)
+            .addSnapshotListener { snap, error ->
+                if (error != null) return@addSnapshotListener
+                onClaims(snap?.documents?.mapNotNull { it.getString("unitId") }?.toSet().orEmpty())
+            }
+    }
+
+    private fun listenOffers(onOffers: (List<FreightOffer>) -> Unit, onError: (String) -> Unit) {
+        registrations += db.collection("offers").addSnapshotListener { snap, error ->
+            if (error != null) {
+                onError("No se pudieron cargar las ofertas.")
+                return@addSnapshotListener
+            }
+            onOffers(snap?.documents?.mapNotNull { parseOffer(it.id, snapshotMap(it.data)) }.orEmpty())
+        }
+    }
+
+    private fun listenUnits(onUnits: (List<FleetUnit>) -> Unit, onError: (String) -> Unit) {
+        registrations += db.collection("units").addSnapshotListener { snap, error ->
+            if (error != null) {
+                onError("No se pudieron cargar las unidades.")
+                return@addSnapshotListener
+            }
+            onUnits(snap?.documents?.mapNotNull { parseUnit(it.id, snapshotMap(it.data)) }.orEmpty())
+        }
+    }
+
+    private fun listenNotices(
+        profile: CarrierProfile,
+        onNotices: (List<Notice>) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        registrations += db.collection("notifications")
+            .whereEqualTo("userId", profile.uuid)
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    onError("No se pudieron cargar los avisos.")
+                    return@addSnapshotListener
+                }
+                onNotices(
+                    snap?.documents
+                        ?.mapNotNull { parseNotice(it.id, snapshotMap(it.data)) }
+                        ?.sortedByDescending { it.createdAt.time }
+                        .orEmpty(),
+                )
             }
     }
 
@@ -467,6 +597,46 @@ class CarrierRepository(
 
     suspend fun setFlag(profile: CarrierProfile, field: String, value: Boolean) {
         db.collection("users").document(profile.authUid).update(field, value).await()
+    }
+
+    suspend fun saveClientPreferences(
+        profile: CarrierProfile,
+        routes: List<RouteCoverage>,
+        equipment: List<String>,
+    ) {
+        val clean = routes
+            .filter { it.originState.isNotBlank() && it.destinationState.isNotBlank() && it.originState != it.destinationState }
+            .take(12)
+            .map { it.copy(equipmentTypes = emptyList()) }
+        val gear = equipment.distinct().take(11)
+        db.collection("users").document(profile.authUid).update(
+            mapOf(
+                "routes" to clean.map { it.toMap() },
+                "coverageEquipmentTypes" to gear,
+                "coverageStates" to emptyList<String>(),
+                "coverageZones" to emptyList<String>(),
+            ),
+        ).await()
+    }
+
+    suspend fun claimRoute(profile: CarrierProfile, unit: FleetUnit) {
+        val origin = (unit.currentLocation.ifBlank { unit.postedOriginState.orEmpty() }).take(40)
+        val destination = (unit.coverageZones.firstOrNull() ?: unit.postedDestinationState.orEmpty()).take(40)
+        if (origin.isBlank() || destination.isBlank()) error("Esa unidad no tiene ruta publicada.")
+        val id = UUID.randomUUID().toString()
+        db.collection("client_interests").document(id).set(
+            mapOf(
+                "id" to id,
+                "clientId" to profile.uuid,
+                "clientName" to profile.name.take(80),
+                "unitId" to unit.id,
+                "originState" to origin,
+                "destinationState" to destination,
+                "equipmentType" to unit.equipmentType.take(40),
+                "status" to "interested",
+                "createdAt" to Timestamp.now(),
+            ),
+        ).await()
     }
 
     suspend fun saveRoutes(profile: CarrierProfile, routes: List<RouteCoverage>) {

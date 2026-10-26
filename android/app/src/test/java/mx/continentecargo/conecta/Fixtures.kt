@@ -14,6 +14,9 @@ fun carrier(
     uuid: String = "carrier-1",
     role: String = "carrier",
     status: String = "approved",
+    name: String = "Línea Norte",
+    email: String = "linea@norte.mx",
+    pricerId: String? = null,
     handlesLTL: Boolean = false,
     handlesLocal: Boolean = false,
     handlesIntraState: Boolean = false,
@@ -27,8 +30,8 @@ fun carrier(
 ) = CarrierProfile(
     authUid = "auth-$uuid",
     uuid = uuid,
-    name = "Línea Norte",
-    email = "linea@norte.mx",
+    name = name,
+    email = email,
     phone = "8112345678",
     phoneDigits = "8112345678",
     role = role,
@@ -45,6 +48,7 @@ fun carrier(
     coverageZones = coverageZones,
     coverageEquipmentTypes = coverageEquipmentTypes,
     coverageUSAStates = coverageUSAStates,
+    pricerId = pricerId,
 )
 
 fun load(
@@ -66,6 +70,7 @@ fun load(
     confirmedCarrierIds: List<String> = emptyList(),
     assignedCarrierId: String? = null,
     assignedOperatorId: String? = null,
+    publishedBy: String = "staff-1",
 ) = FreightLoad(
     id = id,
     reference = reference,
@@ -94,7 +99,7 @@ fun load(
     minBidDecrement = 100.0,
     observations = "",
     status = status,
-    publishedBy = "staff-1",
+    publishedBy = publishedBy,
     publishedAt = Date(1_700_000_000_000L),
     assignedCarrierId = assignedCarrierId,
     assignedUnitId = null,

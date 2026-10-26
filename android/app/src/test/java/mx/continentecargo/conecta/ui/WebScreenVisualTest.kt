@@ -63,7 +63,7 @@ class WebScreenVisualTest {
             }
         }
         compose.onNodeWithText("Continente Conecta").assertIsDisplayed()
-        compose.onNodeWithText("Plataforma de carga para transportistas.").assertIsDisplayed()
+        compose.onNodeWithText("Plataforma de carga Continente Cargo").assertIsDisplayed()
         compose.onNodeWithText("Correo electrónico").assertIsDisplayed()
         compose.onNodeWithText("Contraseña").assertIsDisplayed()
         compose.onNodeWithText("Entrar").assertIsDisplayed()

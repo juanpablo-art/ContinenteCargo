@@ -4,6 +4,7 @@ import mx.continentecargo.conecta.carrier
 import mx.continentecargo.conecta.load
 import mx.continentecargo.conecta.offer
 import mx.continentecargo.conecta.unit
+import mx.continentecargo.conecta.data.RouteCoverage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -141,6 +142,9 @@ class WebServiceRulesTest {
         assertFalse(canSeePrivate(me, open))
         assertTrue(canSeePrivate(me, open.copy(confirmedCarrierIds = listOf(me.uuid))))
         assertTrue(canSeePrivate(me, open.copy(assignedCarrierId = me.uuid)))
+        assertTrue(canSeePrivate(carrier(role = "admin"), open))
+        assertTrue(canSeePrivate(carrier(role = "pricer"), open))
+        assertFalse(canSeePrivate(carrier(role = "client", uuid = "client-9"), open))
     }
 
     @Test
@@ -166,15 +170,54 @@ class WebServiceRulesTest {
     }
 
     @Test
-    fun loginGateMatchesTheWebCarrierMessages() {
+    fun loginGateMatchesTheWebRoleMessages() {
         assertEquals(Gate.Allow, gate(carrier()))
         assertEquals(Gate.Allow, gate(carrier(role = "independent_operator")))
+        assertEquals(Gate.Allow, gate(carrier(role = "admin", status = "pending_approval")))
+        assertEquals(Gate.Allow, gate(carrier(role = "admin", status = "suspended")))
+        assertEquals(Gate.Allow, gate(carrier(role = "pricer")))
+        assertEquals(Gate.Allow, gate(carrier(role = "client")))
         assertTrue((gate(null) as Gate.Deny).message.contains("sin perfil"))
-        assertTrue((gate(carrier(role = "admin")) as Gate.Deny).message.contains("transportistas"))
-        assertTrue((gate(carrier(role = "pricer")) as Gate.Deny).message.contains("transportistas"))
-        assertTrue((gate(carrier(role = "client")) as Gate.Deny).message.contains("transportistas"))
         assertTrue((gate(carrier(status = "suspended")) as Gate.Deny).message.contains("bloqueada"))
         assertTrue((gate(carrier(status = "pending_approval")) as Gate.Deny).message.contains("pendiente de aprobación"))
+        assertTrue((gate(carrier(role = "pricer", status = "pending_approval")) as Gate.Deny).message.contains("pendiente de aprobación"))
+        assertTrue(
+            (gate(carrier(role = "client", status = "pending_approval")) as Gate.Deny).message.contains("espera de aceptación"),
+        )
+        assertTrue((gate(carrier(role = "client", status = "rejected")) as Gate.Deny).message.contains("no fue aceptada"))
+        assertTrue((gate(carrier(role = "altas")) as Gate.Deny).message.contains("no tiene acceso"))
+        val waiting = carrier(uuid = "033cdbf4-e582-4989-9c46-9b2c1fdc2f82", pricerId = null)
+        assertTrue((gate(waiting) as Gate.Deny).message.contains("selección de pricer"))
+        assertEquals(Gate.Allow, gate(waiting.copy(pricerId = "pricer-1")))
+    }
+
+    @Test
+    fun eachRoleSeesTheSameLoadSlicesAsTheWeb() {
+        val pricer = carrier(role = "pricer", uuid = "pricer-1")
+        val line = carrier(uuid = "line-1", pricerId = "pricer-1")
+        val client = carrier(
+            role = "client",
+            uuid = "client-1",
+            routes = listOf(
+                RouteCoverage("r1", "N.L.", "Jalisco", bidirectional = true, equipmentTypes = emptyList()),
+            ),
+            coverageEquipmentTypes = listOf("Caja Seca 53'"),
+        )
+        val loads = listOf(
+            load(id = "open"),
+            load(id = "taken", status = "Asignado", assignedCarrierId = "line-1"),
+            load(id = "full", confirmedUnitCount = 1),
+            load(id = "mine", publishedBy = "client-1", originState = "Sonora", destinationState = "Chihuahua"),
+        )
+        assertEquals(listOf("taken"), loadsForPricer(pricer, loads, listOf(line)).map { it.id })
+        assertEquals(listOf("open", "mine"), openLoads(loads).map { it.id })
+        assertEquals(listOf("mine"), clientLoads(client, loads).map { it.id })
+        assertEquals(listOf("open", "full"), clientOpportunities(client, loads).map { it.id })
+        assertTrue(clientOpportunities(client.copy(routes = emptyList()), loads).isEmpty())
+        assertEquals(listOf(line.uuid), directoryFor(pricer, listOf(line, carrier(uuid = "other"))).map { it.uuid })
+        assertEquals(listOf("line-1"), pendingCarriers(listOf(line.copy(status = "pending_approval"), client)).map { it.uuid })
+        val fleet = myUnits(carrier(role = "admin"), listOf(unit(), unit(id = "post", notes = "availability_post")))
+        assertEquals(listOf("unit-1"), fleet.map { it.id })
     }
 
     @Test

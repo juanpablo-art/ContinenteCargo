@@ -80,6 +80,7 @@ fun parseProfile(authUid: String, data: Map<String, Any?>): CarrierProfile? {
         coverageZones = data["coverageZones"].asStringList(),
         coverageEquipmentTypes = data["coverageEquipmentTypes"].asStringList().map(::normalizeEquipment),
         coverageUSAStates = data["coverageUSAStates"].asStringList(),
+        pricerId = data.str("pricerId")?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -233,6 +234,8 @@ fun parseUnit(docId: String, data: Map<String, Any?>): FleetUnit? {
         status = data.str("status")?.ifBlank { null } ?: "Disponible",
         operatorId = data.str("operatorId"),
         notes = data.str("notes").orEmpty(),
+        postedOriginState = data.str("postedOriginState"),
+        postedDestinationState = data.str("postedDestinationState"),
     )
 }
 
