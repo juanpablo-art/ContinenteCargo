@@ -672,6 +672,160 @@ class CarrierRepository(
         return uuid
     }
 
+    suspend fun postAvailability(profile: CarrierProfile, equipment: String, count: Int, origin: String, destination: String) {
+        if (profile.role !in Catalog.carrierRoles) error("Solo un transportista puede publicar disponibilidad.")
+        if (count < 1) error("Indica al menos una unidad.")
+        if (origin !in Catalog.mexicoStates && origin !in Catalog.usaStates) error("Elige el estado de origen.")
+        if (destination !in Catalog.mexicoStates && destination !in Catalog.usaStates) error("Elige el estado de destino.")
+        saveUnit(availabilityUnit(profile, equipment, count, origin, destination))
+    }
+
+    suspend fun saveTariff(profile: CarrierProfile, rows: List<TariffRow>) {
+        if (profile.role !in Catalog.carrierRoles || profile.status != "approved") {
+            error("Solo un transportista aprobado puede cargar su tarifario.")
+        }
+        val phone = tariffPhone(profile)
+        if (profile.uuid.isBlank() || phone == null) {
+            error("Tu perfil necesita teléfono y folio de transportista antes de guardar tarifas.")
+        }
+        val clean = rows.mapNotNull {
+            sanitizeTariffRow(it.origin, it.destination, it.equipment, it.amount, it.currency, it.basis, it.notes, it.source)
+        }.take(300)
+        val source = if (clean.any { it.source == "archivo" }) "archivo" else "manual"
+        db.collection("carrier_tariffs").document(profile.authUid).set(
+            mapOf(
+                "carrierUid" to profile.authUid,
+                "carrierUuid" to profile.uuid,
+                "phone" to phone,
+                "label" to profile.name.trim().take(120).ifBlank { "Transportista" },
+                "fileName" to "",
+                "source" to source,
+                "rowCount" to clean.size,
+                "updatedAt" to Timestamp.now(),
+                "rows" to clean.map { row ->
+                    mapOf(
+                        "origin" to row.origin,
+                        "destination" to row.destination,
+                        "equipment" to row.equipment,
+                        "amount" to row.amount,
+                        "currency" to row.currency,
+                        "basis" to row.basis,
+                        "notes" to row.notes,
+                        "source" to row.source,
+                    )
+                },
+            ),
+        ).await()
+    }
+
+    suspend fun loadTariffs(profile: CarrierProfile): List<TariffBook> {
+        return if (profile.role == "admin" || profile.role == "pricer") {
+            val snap = db.collection("carrier_tariffs").get().await()
+            snap.documents.mapNotNull { parseTariff(it.id, snapshotMap(it.data)) }
+                .sortedBy { it.label.lowercase() }
+        } else {
+            val snap = db.collection("carrier_tariffs").document(profile.authUid).get().await()
+            if (!snap.exists()) emptyList() else listOfNotNull(parseTariff(snap.id, snapshotMap(snap.data)))
+        }
+    }
+
+    suspend fun publishClientLoad(profile: CarrierProfile, input: ClientPublish) {
+        val issue = clientPublishError(profile, input) ?: run {
+            val id = UUID.randomUUID().toString()
+            val stamp = input.pickupDay.replace("-", "")
+            val reference = "CC-$stamp-${(100..999).random()}"
+            val document = clientLoadDocument(profile, input, id, reference)
+                ?: error("La fecha de recolección no es válida.")
+            db.collection("loads").document(id).set(document).await()
+            null
+        }
+        if (issue != null) error(issue)
+    }
+
+    suspend fun approveCounter(profile: CarrierProfile, offer: FreightOffer) {
+        if (profile.role != "admin") error("Solo un administrador puede aprobar la contra-oferta.")
+        val offerSnap = db.collection("offers").document(offer.id).get().await()
+        val offerData = offerSnap.data ?: return
+        if (offerData["status"] != "PendienteAprobacion") return
+        val loadId = offerData["loadId"] as? String ?: offer.loadId
+        val loadSnap = db.collection("loads").document(loadId).get().await()
+        val loadData = loadSnap.data ?: return
+        val total = loadData["unitCount"].asInt(1)
+        val confirmed = loadData["confirmedUnitCount"].asInt(0)
+        val left = total - confirmed
+        if (left <= 0) return
+        val asked = offerData["availableUnitCount"].asInt(offer.availableUnitCount).coerceAtLeast(1)
+        val taken = minOf(asked, left)
+        val price = (offerData["proposedPrice"] as? Number)?.toDouble()
+            ?: (offerData["amount"] as? Number)?.toDouble()
+            ?: offer.amount
+        val carriers = loadData["confirmedCarrierIds"].asStringList().toMutableList()
+        val carrierId = offerData["carrierId"] as? String ?: offer.carrierId
+        if (carrierId !in carriers) carriers += carrierId
+        val nextConfirmed = confirmed + taken
+        val full = nextConfirmed >= total
+        val history = (loadData["statusHistory"].asHistoryMaps()).toMutableList()
+        history += mapOf(
+            "id" to UUID.randomUUID().toString(),
+            "status" to if (full) "Asignado" else "Publicado",
+            "changedBy" to profile.uuid,
+            "changedByName" to profile.name.ifBlank { "Admin" },
+            "changedAt" to Timestamp.now(),
+            "notes" to if (full) {
+                "Contra-oferta aprobada por administrador"
+            } else {
+                "Contra-oferta aprobada ($nextConfirmed/$total)"
+            },
+        )
+        val loadUpdate = mutableMapOf<String, Any>(
+            "assignedPriceSinIVA" to price,
+            "confirmedCarrierIds" to carriers,
+            "confirmedUnitCount" to nextConfirmed,
+            "statusHistory" to history,
+        )
+        val unitId = offerData["unitId"] as? String
+        val operatorId = offerData["operatorId"] as? String
+        if (!unitId.isNullOrBlank()) loadUpdate["assignedUnitId"] = unitId
+        if (!operatorId.isNullOrBlank()) loadUpdate["assignedOperatorId"] = operatorId
+        if (full) {
+            loadUpdate["status"] = "Asignado"
+            loadUpdate["assignedCarrierId"] = carrierId
+        }
+        db.collection("loads").document(loadId).update(loadUpdate).await()
+        val offerUpdate = mutableMapOf<String, Any>("status" to "Ganadora")
+        if (taken < asked) offerUpdate["availableUnitCount"] = taken
+        db.collection("offers").document(offer.id).update(offerUpdate).await()
+        notify(
+            carrierId,
+            "load_assigned",
+            "¡Propuesta aprobada!",
+            if (taken < asked) {
+                "Se aprobaron $taken de $asked unidades. Solo esas seguían disponibles."
+            } else {
+                "Tu contra-oferta para el viaje fue aprobada."
+            },
+            loadId,
+        )
+    }
+
+    suspend fun rejectCounter(profile: CarrierProfile, offer: FreightOffer) {
+        if (profile.role != "admin") error("Solo un administrador puede rechazar la contra-oferta.")
+        val snap = db.collection("offers").document(offer.id).get().await()
+        if (snap.getString("status") != "PendienteAprobacion") return
+        db.collection("offers").document(offer.id).update("status", "Rechazada").await()
+    }
+
+    suspend fun setUserStatus(person: CarrierProfile, status: String, title: String? = null, body: String? = null) {
+        db.collection("users").document(person.authUid).update("status", status).await()
+        val digits = person.phoneDigits?.filter { it.isDigit() }?.takeIf { it.length in 10..15 }
+        if (digits != null) {
+            runCatching { db.collection("users_by_phone").document(digits).update("status", status).await() }
+        }
+        if (!title.isNullOrBlank() && !body.isNullOrBlank()) {
+            notify(person.uuid, "registration_$status", title, body, null)
+        }
+    }
+
     private suspend fun notify(userId: String, type: String, title: String, body: String, loadId: String?) {
         val id = UUID.randomUUID().toString()
         val payload = mutableMapOf<String, Any>(

@@ -18,6 +18,8 @@ object FirebaseBackend {
     const val authDomain = "continente-conecta.firebaseapp.com"
     const val createProfileUrl =
         "https://us-central1-continente-conecta.cloudfunctions.net/createUserProfile"
+    const val supplierProxyUrl =
+        "https://us-central1-continente-conecta.cloudfunctions.net/sadminProxy"
 
     fun install(app: Application) {
         if (FirebaseApp.getApps(app).isNotEmpty()) return

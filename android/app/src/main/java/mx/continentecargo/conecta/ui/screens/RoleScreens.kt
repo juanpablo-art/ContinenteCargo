@@ -65,6 +65,10 @@ fun AdminHomeScreen(
     onOpenLoads: () -> Unit,
     onOpenDirectory: () -> Unit,
     onNotices: () -> Unit,
+    onApprove: ((CarrierProfile) -> Unit)? = null,
+    onReject: ((CarrierProfile) -> Unit)? = null,
+    onApproveOffer: ((FreightOffer) -> Unit)? = null,
+    onRejectOffer: ((FreightOffer) -> Unit)? = null,
 ) {
     val published = loads.count { it.status == "Publicado" }
     val moving = loads.count { it.status !in setOf("Publicado", "Entregado", "Cancelado") }
@@ -97,14 +101,20 @@ fun AdminHomeScreen(
             if (waiting.isNotEmpty()) {
                 item { Text("Registros nuevos", fontWeight = FontWeight.SemiBold, color = Ink) }
                 items(waiting.take(8), key = { "pending-${it.uuid}" }) { person ->
-                    PersonRow(person)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PersonRow(person)
+                        DecisionRow(onApprove?.let { { it(person) } }, onReject?.let { { it(person) } })
+                    }
                 }
             }
             if (counters.isNotEmpty()) {
                 item { Text("Contra-ofertas", fontWeight = FontWeight.SemiBold, color = Ink) }
                 items(counters.take(8), key = { "counter-${it.id}" }) { offer ->
                     val reference = loads.firstOrNull { it.id == offer.loadId }?.reference ?: offer.loadId
-                    PlainCard("${offer.carrierName} · $reference", "${formatMoney(offer.amount, offer.currency)} · ${offer.status}")
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PlainCard("${offer.carrierName} · $reference", "${formatMoney(offer.amount, offer.currency)} · ${offer.status}")
+                        DecisionRow(onApproveOffer?.let { { it(offer) } }, onRejectOffer?.let { { it(offer) } })
+                    }
                 }
             }
             item { Text("Pricers", fontWeight = FontWeight.SemiBold, color = Ink) }
@@ -338,6 +348,10 @@ fun DirectoryScreen(
     people: List<CarrierProfile>,
     emptyTitle: String,
     emptySubtitle: String,
+    onApprove: ((CarrierProfile) -> Unit)? = null,
+    onReject: ((CarrierProfile) -> Unit)? = null,
+    onBlock: ((CarrierProfile) -> Unit)? = null,
+    onUnblock: ((CarrierProfile) -> Unit)? = null,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableStateOf("all") }
@@ -377,7 +391,19 @@ fun DirectoryScreen(
             if (shown.isEmpty()) {
                 item { EmptyState(title = emptyTitle, subtitle = emptySubtitle) }
             } else {
-                items(shown, key = { it.authUid + it.uuid }) { person -> PersonRow(person) }
+                items(shown, key = { it.authUid + it.uuid }) { person ->
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PersonRow(person)
+                        when {
+                            person.status == "pending_approval" ->
+                                DecisionRow(onApprove?.let { { it(person) } }, onReject?.let { { it(person) } })
+                            person.status == "approved" && onBlock != null ->
+                                DecisionRow(null, { onBlock(person) }, approveLabel = "", rejectLabel = "Bloquear")
+                            person.status == "suspended" && onUnblock != null ->
+                                DecisionRow({ onUnblock(person) }, null, approveLabel = "Reactivar")
+                        }
+                    }
+                }
             }
         }
     }
@@ -538,6 +564,24 @@ private fun LinkCard(title: String, detail: String, onClick: () -> Unit) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold, color = Ink)
             Text(detail, color = Muted, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun DecisionRow(
+    onApprove: (() -> Unit)?,
+    onReject: (() -> Unit)?,
+    approveLabel: String = "Aprobar",
+    rejectLabel: String = "Rechazar",
+) {
+    if (onApprove == null && onReject == null) return
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (onApprove != null && approveLabel.isNotBlank()) {
+            androidx.compose.material3.TextButton(onClick = onApprove) { Text(approveLabel) }
+        }
+        if (onReject != null && rejectLabel.isNotBlank()) {
+            androidx.compose.material3.TextButton(onClick = onReject) { Text(rejectLabel, color = mx.continentecargo.conecta.ui.theme.Danger) }
         }
     }
 }

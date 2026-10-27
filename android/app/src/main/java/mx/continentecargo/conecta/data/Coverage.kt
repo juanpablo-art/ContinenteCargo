@@ -255,6 +255,16 @@ fun directoryFor(profile: CarrierProfile?, people: List<CarrierProfile>): List<C
 fun approvedPricers(people: List<CarrierProfile>): List<CarrierProfile> =
     people.filter { it.role == "pricer" && it.status == "approved" }.sortedBy { it.name.lowercase() }
 
+fun myAvailability(profile: CarrierProfile?, units: List<FleetUnit>): List<FleetUnit> {
+    profile ?: return emptyList()
+    return units
+        .filter { unit ->
+            unit.notes == "availability_post" &&
+                (unit.ownerId == profile.uuid || (profile.companyId != null && unit.ownerId == profile.companyId))
+        }
+        .sortedByDescending { it.availableFrom.time }
+}
+
 fun availablePosts(units: List<FleetUnit>): List<FleetUnit> =
     units.filter { it.notes == "availability_post" && it.status == "Disponible" }
 

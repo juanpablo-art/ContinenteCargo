@@ -13,8 +13,13 @@ import mx.continentecargo.conecta.data.FleetUnit
 import mx.continentecargo.conecta.data.FreightLoad
 import mx.continentecargo.conecta.data.FreightOffer
 import mx.continentecargo.conecta.data.Gate
+import mx.continentecargo.conecta.data.ClientPublish
 import mx.continentecargo.conecta.data.Notice
+import mx.continentecargo.conecta.data.PaySnapshot
+import mx.continentecargo.conecta.data.PaymentsRepository
 import mx.continentecargo.conecta.data.ProfileRead
+import mx.continentecargo.conecta.data.TariffBook
+import mx.continentecargo.conecta.data.TariffRow
 import mx.continentecargo.conecta.data.RegisterInput
 import mx.continentecargo.conecta.data.RouteCoverage
 import mx.continentecargo.conecta.data.actionMessage
@@ -36,6 +41,9 @@ data class ConectaUi(
     val passedLoadIds: Set<String> = emptySet(),
     val directory: List<CarrierProfile> = emptyList(),
     val claimedUnitIds: Set<String> = emptySet(),
+    val tariffs: List<TariffBook> = emptyList(),
+    val pay: PaySnapshot? = null,
+    val payBusy: Boolean = false,
     val dataError: String? = null,
     val busy: Boolean = false,
     val toast: String? = null,
@@ -45,6 +53,7 @@ data class ConectaUi(
 class ConectaViewModel(
     private val auth: AuthRepository = AuthRepository(),
     private val data: CarrierRepository = CarrierRepository(),
+    private val payments: PaymentsRepository = PaymentsRepository(),
 ) : ViewModel() {
     private val _ui = MutableStateFlow(ConectaUi())
     val ui = _ui.asStateFlow()
@@ -326,6 +335,144 @@ class ConectaViewModel(
         }
     }
 
+    fun refreshTariffs() {
+        val profile = _ui.value.profile ?: return
+        viewModelScope.launch {
+            try {
+                val books = data.loadTariffs(profile)
+                _ui.update { it.copy(tariffs = books, dataError = null) }
+            } catch (error: Exception) {
+                _ui.update { it.copy(dataError = error.message ?: "No se pudo leer el tarifario.") }
+            }
+        }
+    }
+
+    fun saveTariff(rows: List<TariffRow>) {
+        val profile = _ui.value.profile ?: return
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            try {
+                data.saveTariff(profile, rows)
+                val books = data.loadTariffs(profile)
+                _ui.update { it.copy(toast = "Tarifa guardada. Continente Cargo ya puede usarla para asignarte.", tariffs = books) }
+            } catch (error: Exception) {
+                _ui.update { it.copy(toast = error.message ?: "No se pudo guardar el tarifario.") }
+            } finally {
+                _ui.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    fun postAvailability(equipment: String, count: Int, origin: String, destination: String) {
+        val profile = _ui.value.profile ?: return
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            try {
+                data.postAvailability(profile, equipment, count, origin, destination)
+                _ui.update { it.copy(toast = "Disponibilidad publicada") }
+            } catch (error: Exception) {
+                _ui.update { it.copy(toast = error.message ?: "No se pudo publicar") }
+            } finally {
+                _ui.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    fun withdrawAvailability(id: String) {
+        viewModelScope.launch {
+            try {
+                data.deleteUnit(id)
+                _ui.update { it.copy(toast = "Publicación retirada") }
+            } catch (error: Exception) {
+                _ui.update { it.copy(toast = error.message ?: "No se pudo retirar") }
+            }
+        }
+    }
+
+    fun publishClientLoad(input: ClientPublish) {
+        val profile = _ui.value.profile ?: return
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            try {
+                data.publishClientLoad(profile, input)
+                _ui.update { it.copy(toast = "Carga publicada") }
+            } catch (error: Exception) {
+                _ui.update { it.copy(toast = error.message ?: "No se pudo publicar la carga.") }
+            } finally {
+                _ui.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    fun approveOffer(offer: FreightOffer) {
+        val profile = _ui.value.profile ?: return
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true) }
+            try {
+                data.approveCounter(profile, offer)
+                _ui.update { it.copy(toast = "Contra-oferta aprobada") }
+            } catch (error: Exception) {
+                _ui.update { it.copy(toast = error.message ?: "No se pudo aprobar la contra-oferta.") }
+            } finally {
+                _ui.update { it.copy(busy = false) }
+            }
+        }
+    }
+
+    fun rejectOffer(offer: FreightOffer) {
+        val profile = _ui.value.profile ?: return
+        viewModelScope.launch {
+            try {
+                data.rejectCounter(profile, offer)
+                _ui.update { it.copy(toast = "Contra-oferta rechazada") }
+            } catch (error: Exception) {
+                _ui.update { it.copy(toast = error.message ?: "No se pudo rechazar la contra-oferta.") }
+            }
+        }
+    }
+
+    fun approvePerson(person: CarrierProfile) = decidePerson(
+        person,
+        "approved",
+        "Registro aprobado",
+        "Tu registro fue aprobado. Ya puedes participar en cargas.",
+    )
+
+    fun rejectPerson(person: CarrierProfile) = decidePerson(
+        person,
+        "rejected",
+        "Registro rechazado",
+        "Tu solicitud de registro no fue aprobada. Contacta a Continente Cargo.",
+    )
+
+    fun blockPerson(person: CarrierProfile) = decidePerson(person, "suspended", null, null)
+
+    fun unblockPerson(person: CarrierProfile) = decidePerson(person, "approved", null, null)
+
+    fun loadCarrierPayments(person: CarrierProfile) {
+        viewModelScope.launch {
+            _ui.update { it.copy(payBusy = true, pay = null) }
+            val snapshot = payments.openCarrier(person)
+            _ui.update { it.copy(payBusy = false, pay = snapshot) }
+        }
+    }
+
+    fun openPaySupplier(id: String) {
+        viewModelScope.launch {
+            _ui.update { it.copy(payBusy = true) }
+            val snapshot = payments.openSupplier(id)
+            _ui.update { it.copy(payBusy = false, pay = snapshot) }
+        }
+    }
+
+    fun linkPayRfc(person: CarrierProfile, rfc: String) {
+        viewModelScope.launch {
+            _ui.update { it.copy(payBusy = true) }
+            val snapshot = payments.linkRfc(person, rfc)
+            _ui.update { it.copy(payBusy = false, pay = snapshot) }
+        }
+    }
+
     fun claimRoute(unit: FleetUnit) {
         val profile = _ui.value.profile ?: return
         viewModelScope.launch {
@@ -367,6 +514,24 @@ class ConectaViewModel(
     fun markAllRead() {
         val notices = _ui.value.notices
         viewModelScope.launch { data.markAllRead(notices) }
+    }
+
+    private fun decidePerson(person: CarrierProfile, status: String, title: String?, body: String?) {
+        viewModelScope.launch {
+            try {
+                data.setUserStatus(person, status, title, body)
+                _ui.update {
+                    it.copy(toast = when (status) {
+                        "approved" -> if (title == null) "Cuenta reactivada" else "Registro aprobado"
+                        "rejected" -> "Registro rechazado"
+                        "suspended" -> "Cuenta bloqueada"
+                        else -> "Cuenta actualizada"
+                    })
+                }
+            } catch (error: Exception) {
+                _ui.update { it.copy(toast = error.message ?: "No se pudo actualizar la cuenta.") }
+            }
+        }
     }
 
     private fun setFlag(field: String, value: Boolean) {

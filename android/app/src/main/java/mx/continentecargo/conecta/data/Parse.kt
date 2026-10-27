@@ -259,3 +259,38 @@ fun parseNotice(docId: String, data: Map<String, Any?>): Notice? {
 
 @Suppress("UNCHECKED_CAST")
 fun snapshotMap(data: Map<String, Any>?): Map<String, Any?> = data ?: emptyMap()
+
+fun Any?.asHistoryMaps(): List<Map<String, Any>> {
+    val rows = this as? List<*> ?: return emptyList()
+    return rows.mapNotNull { item ->
+        val map = item as? Map<*, *> ?: return@mapNotNull null
+        map.entries.mapNotNull { (key, value) ->
+            val name = key as? String ?: return@mapNotNull null
+            if (value == null) null else name to value
+        }.toMap()
+    }
+}
+
+fun parseTariff(id: String, data: Map<String, Any?>): TariffBook {
+    val rows = (data["rows"] as? List<*>).orEmpty().mapNotNull { item ->
+        val map = item as? Map<*, *> ?: return@mapNotNull null
+        sanitizeTariffRow(
+            origin = map["origin"] as? String ?: "",
+            destination = map["destination"] as? String ?: "",
+            equipment = map["equipment"] as? String ?: "",
+            amount = map["amount"].asDouble(),
+            currency = map["currency"] as? String ?: "MXN",
+            basis = map["basis"] as? String ?: "otro",
+            notes = map["notes"] as? String ?: "",
+            source = map["source"] as? String ?: "manual",
+        )
+    }
+    return TariffBook(
+        id = id,
+        label = (data["label"] as? String)?.takeIf { it.isNotBlank() } ?: "Transportista",
+        phone = data["phone"] as? String ?: "",
+        carrierUuid = data["carrierUuid"] as? String ?: "",
+        fileName = data["fileName"] as? String ?: "",
+        rows = rows,
+    )
+}

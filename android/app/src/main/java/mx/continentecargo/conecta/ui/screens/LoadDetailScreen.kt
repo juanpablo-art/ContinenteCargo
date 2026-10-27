@@ -64,6 +64,8 @@ fun LoadDetailScreen(
     onBid: (FreightLoad, Double, String?, Int) -> Unit,
     onAvailability: (FreightLoad, String?, Double?) -> Unit,
     onLtl: (FreightLoad, Double, String) -> Unit,
+    onApproveOffer: ((mx.continentecargo.conecta.data.FreightOffer) -> Unit)? = null,
+    onRejectOffer: ((mx.continentecargo.conecta.data.FreightOffer) -> Unit)? = null,
 ) {
     val load = ui.loads.firstOrNull { it.id == loadId }
     Column(Modifier.fillMaxSize()) {
@@ -136,6 +138,12 @@ fun LoadDetailScreen(
                         color = Ink,
                         fontSize = 14.sp,
                     )
+                    if (offer.status == "PendienteAprobacion" && (onApproveOffer != null || onRejectOffer != null)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (onApproveOffer != null) TextButton(onClick = { onApproveOffer(offer) }) { Text("Aprobar") }
+                            if (onRejectOffer != null) TextButton(onClick = { onRejectOffer(offer) }) { Text("Rechazar") }
+                        }
+                    }
                 }
             }
             if (open && ui.profile?.role in Catalog.carrierRoles) {

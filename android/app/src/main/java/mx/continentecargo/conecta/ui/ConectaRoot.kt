@@ -9,7 +9,7 @@ import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.LocalShipping
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Route
 import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.TravelExplore
@@ -24,7 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -39,7 +41,9 @@ import mx.continentecargo.conecta.data.clientLoads
 import mx.continentecargo.conecta.data.clientOpportunities
 import mx.continentecargo.conecta.data.directoryFor
 import mx.continentecargo.conecta.data.loadsForPricer
+import mx.continentecargo.conecta.data.myAvailability
 import mx.continentecargo.conecta.data.myOffers
+import mx.continentecargo.conecta.data.paymentCarriers
 import mx.continentecargo.conecta.data.myTrips
 import mx.continentecargo.conecta.data.myUnits
 import mx.continentecargo.conecta.data.openLoads
@@ -51,7 +55,14 @@ import mx.continentecargo.conecta.ui.screens.FleetBoard
 import mx.continentecargo.conecta.ui.screens.HomeScreen
 import mx.continentecargo.conecta.ui.screens.LoadBoard
 import mx.continentecargo.conecta.ui.screens.LoadDetailScreen
+import mx.continentecargo.conecta.ui.screens.AvailabilityScreen
+import mx.continentecargo.conecta.ui.screens.MoreItem
+import mx.continentecargo.conecta.ui.screens.MoreScreen
 import mx.continentecargo.conecta.ui.screens.OpportunitiesScreen
+import mx.continentecargo.conecta.ui.screens.PaymentsScreen
+import mx.continentecargo.conecta.ui.screens.PublishLoadScreen
+import mx.continentecargo.conecta.ui.screens.TariffListScreen
+import mx.continentecargo.conecta.ui.screens.TariffScreen
 import mx.continentecargo.conecta.ui.screens.PricerHomeScreen
 import mx.continentecargo.conecta.ui.screens.PricerLoadsScreen
 import mx.continentecargo.conecta.ui.screens.LoginScreen
@@ -75,7 +86,7 @@ private val carrierTabs = listOf(
     Tab("offers", "Ofertas", Icons.Outlined.Sell),
     Tab("trips", "Viajes", Icons.Outlined.Route),
     Tab("units", "Unidades", Icons.Outlined.LocalShipping),
-    Tab("profile", "Perfil", Icons.Outlined.Person),
+    Tab("more", "Más", Icons.Outlined.MoreHoriz),
 )
 
 private fun tabsFor(role: String?): List<Tab> = when (role) {
@@ -84,21 +95,43 @@ private fun tabsFor(role: String?): List<Tab> = when (role) {
         Tab("loads", "Cargas", Icons.Outlined.Inventory2),
         Tab("directory", "Transportistas", Icons.Outlined.Groups),
         Tab("units", "Unidades", Icons.Outlined.LocalShipping),
-        Tab("profile", "Perfil", Icons.Outlined.Person),
+        Tab("more", "Más", Icons.Outlined.MoreHoriz),
     )
     "pricer" -> listOf(
         Tab("home", "Inicio", Icons.Outlined.GridView),
         Tab("loads", "Cargas", Icons.Outlined.Inventory2),
         Tab("directory", "Directorio", Icons.Outlined.Groups),
-        Tab("profile", "Perfil", Icons.Outlined.Person),
+        Tab("more", "Más", Icons.Outlined.MoreHoriz),
     )
     "client" -> listOf(
         Tab("home", "Inicio", Icons.Outlined.Home),
         Tab("history", "Historial", Icons.Outlined.History),
         Tab("opportunities", "Oportunidades", Icons.Outlined.TravelExplore),
-        Tab("profile", "Perfil", Icons.Outlined.Person),
+        Tab("more", "Más", Icons.Outlined.MoreHoriz),
     )
     else -> carrierTabs
+}
+
+private fun moreItems(role: String?): List<MoreItem> = when (role) {
+    "admin", "pricer" -> listOf(
+        MoreItem("tariffs", "Tarifarios", "Tarifas publicadas por los transportistas."),
+        MoreItem("payments", "Pagos", "Cuenta del transportista y pagos de Operaciones."),
+        MoreItem("notices", "Avisos", "Avisos de la operación."),
+        MoreItem("profile", "Perfil", "Nombre, teléfono y sesión."),
+    )
+    "client" -> listOf(
+        MoreItem("publish", "Publicar", "Publica una carga sin poner precio."),
+        MoreItem("routes", "Rutas", "Rutas y tipos de unidad para las oportunidades."),
+        MoreItem("notices", "Avisos", "Avisos de tus cargas."),
+        MoreItem("profile", "Perfil", "Nombre, teléfono y sesión."),
+    )
+    else -> listOf(
+        MoreItem("availability", "Disponibilidad", "Avisa que tienes unidades libres."),
+        MoreItem("tariff", "Tarifario", "La tarifa con la que Continente Cargo puede asignarte."),
+        MoreItem("payments", "Pagos", "Tu cuenta y lo que Operaciones ya registró."),
+        MoreItem("notices", "Avisos", "Avisos de cargas y viajes."),
+        MoreItem("profile", "Perfil", "Nombre, teléfono, rutas y sesión."),
+    )
 }
 
 @Composable
@@ -205,6 +238,10 @@ fun ConectaRoot(vm: ConectaViewModel) {
                         onOpenLoads = { nav.navigate("loads") },
                         onOpenDirectory = { nav.navigate("directory") },
                         onNotices = { nav.navigate("notices") },
+                        onApprove = vm::approvePerson,
+                        onReject = vm::rejectPerson,
+                        onApproveOffer = vm::approveOffer,
+                        onRejectOffer = vm::rejectOffer,
                     )
                     "pricer" -> ui.profile?.let { profile ->
                         PricerHomeScreen(
@@ -273,6 +310,10 @@ fun ConectaRoot(vm: ConectaViewModel) {
                         people = people,
                         emptyTitle = "Sin registros",
                         emptySubtitle = "Los transportistas y clientes aparecen aquí.",
+                        onApprove = if (role == "admin") vm::approvePerson else null,
+                        onReject = if (role == "admin") vm::rejectPerson else null,
+                        onBlock = if (role == "admin") vm::blockPerson else null,
+                        onUnblock = if (role == "admin") vm::unblockPerson else null,
                     )
                 }
             }
@@ -327,6 +368,69 @@ fun ConectaRoot(vm: ConectaViewModel) {
                     onStatus = vm::setUnitStatus,
                 )
             }
+            composable("more") {
+                MoreScreen(items = moreItems(role), onOpen = { destination ->
+                    nav.navigate(if (destination == "routes") "profile" else destination)
+                })
+            }
+            composable("availability") {
+                AvailabilityScreen(
+                    posts = myAvailability(ui.profile, ui.units),
+                    busy = ui.busy,
+                    onPublish = vm::postAvailability,
+                    onWithdraw = vm::withdrawAvailability,
+                )
+            }
+            composable("tariff") {
+                LaunchedEffect(ui.profile?.authUid) { vm.refreshTariffs() }
+                TariffScreen(
+                    book = ui.tariffs.firstOrNull(),
+                    busy = ui.busy,
+                    onSave = vm::saveTariff,
+                )
+            }
+            composable("tariffs") {
+                LaunchedEffect(ui.profile?.authUid) { vm.refreshTariffs() }
+                TariffListScreen(books = ui.tariffs)
+            }
+            composable("publish") {
+                PublishLoadScreen(
+                    busy = ui.busy,
+                    history = clientLoads(ui.profile, ui.loads),
+                    onPublish = vm::publishClientLoad,
+                    onOpen = { nav.navigate("load/${it.id}") },
+                )
+            }
+            composable("payments") {
+                val mine = role == "carrier" || role == "independent_operator"
+                var selected by remember { mutableStateOf(ui.profile.takeIf { mine }) }
+                LaunchedEffect(ui.profile?.uuid, mine) {
+                    if (mine) {
+                        ui.profile?.let {
+                            selected = it
+                            vm.loadCarrierPayments(it)
+                        }
+                    }
+                }
+                PaymentsScreen(
+                    title = if (mine) "Mis pagos" else "Pagos",
+                    subtitle = if (mine) {
+                        "Tu cuenta, si ya te pagaron y el envío de facturas."
+                    } else {
+                        "Cuenta del transportista, pagos de Operaciones y envío de facturas."
+                    },
+                    carriers = if (mine) emptyList() else paymentCarriers(ui.directory),
+                    busy = ui.payBusy,
+                    snapshot = ui.pay,
+                    selected = selected,
+                    onCarrier = { person ->
+                        selected = person
+                        vm.loadCarrierPayments(person)
+                    },
+                    onSupplier = vm::openPaySupplier,
+                    onRfc = vm::linkPayRfc,
+                )
+            }
             composable("profile") {
                 ui.profile?.let { profile ->
                     ProfileScreen(
@@ -365,6 +469,8 @@ fun ConectaRoot(vm: ConectaViewModel) {
                     onBid = vm::placeBid,
                     onAvailability = vm::indicate,
                     onLtl = vm::quoteLtl,
+                    onApproveOffer = if (role == "admin") vm::approveOffer else null,
+                    onRejectOffer = if (role == "admin") vm::rejectOffer else null,
                 )
             }
             composable("trip/{id}") { entry ->
