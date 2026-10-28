@@ -4,64 +4,84 @@ import SwiftUI
 
 struct CompetenciaView: View {
     @Environment(AppStore.self) private var store
+    @State private var directory: [CarrierDirectoryRecord] = []
+    @State private var toInviteCounts: [String: Int] = [:]
+    @State private var isLoading = false
 
-    // MARK: - Per-pricer stats
+    // MARK: - Per-pricer stats (mirrors web's rankPricers in pricer-board-page-…js)
 
     struct PricerStat: Identifiable {
         let id: UUID
         let name: String
-        let openLoads: Int
-        let inTransit: Int
-        let delivered: Int
-        let registeredCarriers: Int
-        let totalCarriers: Int
-    }
-
-    private var openLoadsTotal: Int {
-        store.loads.filter { $0.status == .published && $0.assignedCarrierId == nil && !$0.isFull }.count
+        let porInvitar: Int?      // nil → "—" (alta_pending unreadable); else pendingToInvite
+        let invitaciones: Int     // carrier_preprofiles: pricerEmail==email OR invitedBy==authUID
+        let enProceso: Int        // carriers: (pricerRawId==authUID OR pricerEmail==mail) && pending
+        let exitosos: Int         // carriers: (pricerRawId==authUID OR pricerEmail==mail) && approved
     }
 
     private var pricerStats: [PricerStat] {
-        store.pricers().map { pricer in
-            let carriers   = store.users.filter { $0.pricerId == pricer.id }
-            let carrierIds = Set(carriers.map { $0.id })
-            let prLoads    = store.loads.filter { load in
-                if let a = load.assignedCarrierId, carrierIds.contains(a) { return true }
-                return load.confirmedCarrierIds.contains { carrierIds.contains($0) }
+        // Mirrors web: isCarrierRole && status !== "suspended"
+        let carriers = store.users.filter {
+            ($0.role == .carrier || $0.role == .independentOperator) && $0.status != .suspended
+        }
+        return store.pricers().map { pricer in
+            let prEmail = FirestoreService.emailOf(pricer.email)
+            let authUID = pricer.firebaseUID
+
+            // invitaciones: preprofiles matching by email OR by invitedBy == Auth UID / uuid
+            let inviteRecords = directory.filter {
+                FirestoreService.emailOf($0.pricerEmail) == prEmail ||
+                (!authUID.isEmpty && $0.invitedBy == authUID)
             }
+
+            // exitosos / enProceso: web rankPricers —
+            // row.pricerId === pricer.uuid || emailOf(row.pricerEmail) === mail
+            let mine = carriers.filter {
+                let carrierMail = FirestoreService.emailOf($0.pricerEmail)
+                return (!authUID.isEmpty && $0.pricerRawId == authUID) ||
+                    (!prEmail.isEmpty && carrierMail == prEmail)
+            }
+
             return PricerStat(
                 id: pricer.id,
                 name: pricer.name,
-                openLoads: openLoadsTotal,
-                inTransit: prLoads.filter { $0.status.isActive && $0.status != .published }.count,
-                delivered: prLoads.filter { $0.status == .delivered }.count,
-                registeredCarriers: carriers.filter { $0.status == .approved }.count,
-                totalCarriers: carriers.count
+                porInvitar:   toInviteCounts[authUID],
+                invitaciones: inviteRecords.count,
+                enProceso:    mine.filter { $0.status == .pendingApproval }.count,
+                exitosos:     mine.filter { $0.isApproved }.count
             )
         }
-        .sorted { $0.totalCarriers > $1.totalCarriers }
+        .sorted {
+            if $0.exitosos != $1.exitosos { return $0.exitosos > $1.exitosos }
+            return $0.invitaciones > $1.invitaciones
+        }
     }
 
     // MARK: - Heat map data
 
+    private var approvedCarriers: [AppUser] {
+        store.users.filter { ($0.role == .carrier || $0.role == .independentOperator) && $0.isApproved }
+    }
+
+    // Approved carriers per Mexican state (from coverageStates).
     private var mexicoHeat: [String: Int] {
         var counts: [String: Int] = [:]
-        for load in store.loads where load.status != .cancelled {
-            counts[load.originState, default: 0] += 1
-            if load.destinationState != load.originState {
-                counts[load.destinationState, default: 0] += 1
+        for user in approvedCarriers {
+            for state in user.coverageStates {
+                counts[state, default: 0] += 1
             }
         }
         return counts
     }
 
+    // Approved carriers per US state; if coversUSA=true with no state list → counts for every state.
     private var usaHeat: [String: Int] {
+        let allUSStates = USState.allCases.map { $0.rawValue }
         var counts: [String: Int] = [:]
-        for load in store.loads where load.status != .cancelled {
-            if load.coversUSA {
-                for state in load.usaStates {
-                    counts[state, default: 0] += 1
-                }
+        for user in approvedCarriers where user.coversUSA {
+            let states = user.coverageUSAStates.isEmpty ? allUSStates : user.coverageUSAStates
+            for state in states {
+                counts[state, default: 0] += 1
             }
         }
         return counts
@@ -84,6 +104,18 @@ struct CompetenciaView: View {
             .navigationTitle("Competencia")
             .navigationBarTitleDisplayMode(.large)
         }
+        .task {
+            isLoading = true
+            // Listener may still be filling store.users; wait briefly so exitosos
+            // and registrationIndex see the full carrier roster.
+            for _ in 0..<30 where store.pricers().isEmpty || store.users.count < 10 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            let dir = await store.loadFullCarrierDirectory()
+            directory = dir
+            toInviteCounts = await store.loadToInviteCounts(directory: dir)
+            isLoading = false
+        }
     }
 
     // MARK: - Pricer table
@@ -92,10 +124,12 @@ struct CompetenciaView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Competencia de pricers")
                 .font(.headline).foregroundColor(.ccNavy)
-            Text("Visibilidad regional del equipo de conductores")
+            Text("Quién está metiendo más transportistas. El ranking usa registros aprobados.")
                 .font(.caption).foregroundColor(.secondary)
 
-            if pricerStats.isEmpty {
+            if isLoading {
+                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 16)
+            } else if pricerStats.isEmpty {
                 Text("Sin pricers registrados.")
                     .font(.subheadline).foregroundColor(.secondary)
                     .padding(.vertical, 16)
@@ -104,13 +138,14 @@ struct CompetenciaView: View {
                 VStack(spacing: 0) {
                     // Header
                     HStack(spacing: 0) {
+                        Text("#").font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
+                            .frame(width: 22, alignment: .leading)
                         Text("Pricer").font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        statHeader("Por\ncubrir")
-                        statHeader("En\ntránsito")
-                        statHeader("Entre-\ngadas")
-                        statHeader("Regis-\ntradas")
-                        statHeader("Trans-\nportistas")
+                        statHeader("Por\ninvitar")
+                        statHeader("Invita-\nciones")
+                        statHeader("En\nproceso")
+                        statHeader("Exitosos")
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -120,6 +155,9 @@ struct CompetenciaView: View {
 
                     ForEach(Array(pricerStats.enumerated()), id: \.element.id) { i, stat in
                         HStack(spacing: 0) {
+                            Text("\(i + 1)")
+                                .font(.caption2).foregroundColor(.secondary)
+                                .frame(width: 22, alignment: .leading)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(firstName(stat.name))
                                     .font(.subheadline).fontWeight(.semibold).lineLimit(1)
@@ -127,11 +165,10 @@ struct CompetenciaView: View {
                                     .font(.caption2).foregroundColor(.secondary).lineLimit(1)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            statCell(stat.openLoads)
-                            statCell(stat.inTransit, accent: stat.inTransit > 0 ? .ccBlue : nil)
-                            statCell(stat.delivered, accent: stat.delivered > 0 ? .green : nil)
-                            statCell(stat.registeredCarriers)
-                            statCell(stat.totalCarriers, accent: .ccNavy)
+                            optionalStatCell(stat.porInvitar)
+                            statCell(stat.invitaciones, accent: stat.invitaciones > 0 ? .ccBlue : nil)
+                            statCell(stat.enProceso, accent: stat.enProceso > 0 ? .orange : nil)
+                            statCell(stat.exitosos, accent: stat.exitosos > 0 ? .green : nil)
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
@@ -154,14 +191,22 @@ struct CompetenciaView: View {
         Text(text)
             .font(.caption2).fontWeight(.semibold).foregroundColor(.secondary)
             .multilineTextAlignment(.center)
-            .frame(width: 46)
+            .frame(width: 52)
     }
 
     private func statCell(_ value: Int, accent: Color? = nil) -> some View {
         Text("\(value)")
             .font(.subheadline).fontWeight(.bold).tabularNumerals()
             .foregroundColor(accent ?? Color(UIColor.label))
-            .frame(width: 46)
+            .frame(width: 52)
+    }
+
+    /// Web shows "—" when toInvite map has no entry (alta_pending unreadable).
+    private func optionalStatCell(_ value: Int?) -> some View {
+        Text(value.map(String.init) ?? "—")
+            .font(.subheadline).fontWeight(.bold).tabularNumerals()
+            .foregroundColor(Color(UIColor.label))
+            .frame(width: 52)
     }
 
     private func firstName(_ name: String) -> String {
@@ -172,9 +217,9 @@ struct CompetenciaView: View {
 
     private var mexicoHeatMap: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Mapa de calor: México")
+            Text("Mapa de calor · México")
                 .font(.headline).foregroundColor(.ccNavy)
-            Text("Cargas por estado (origen o destino)")
+            Text("Transportistas aprobados por zona y estado. Bajo es donde estamos escasos. Algunos es donde ya hay presencia, pero no sobra.")
                 .font(.caption).foregroundColor(.secondary)
 
             let states = MexicanState.allCases
@@ -200,13 +245,13 @@ struct CompetenciaView: View {
         let maxVal = max(1, usaHeat.values.max() ?? 1)
 
         return VStack(alignment: .leading, spacing: 10) {
-            Text("Mapa de calor: EE.UU.")
+            Text("Mapa de calor · EE.UU.")
                 .font(.headline).foregroundColor(.ccNavy)
-            Text("Cargas con destino en Estados Unidos")
+            Text("Cobertura en Estados Unidos de los transportistas aprobados. Cuenta los estados que marcaron, o todo el país si indicaron EE.UU. sin lista.")
                 .font(.caption).foregroundColor(.secondary)
 
             if activeUSA.isEmpty {
-                Text("Sin cargas con destino a EE.UU.")
+                Text("Sin transportistas con cobertura en EE.UU.")
                     .font(.subheadline).foregroundColor(.secondary)
                     .padding(.vertical, 16)
                     .frame(maxWidth: .infinity)

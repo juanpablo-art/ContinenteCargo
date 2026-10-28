@@ -844,6 +844,24 @@ service cloud.firestore {
       allow read, update, delete: if false;
     }
 
+    // ── supplier_altas ──────────────────────────────────────────────────────────
+    // Auto-registrations and pre-matched sheet entries from the supplier portal.
+    // Admins and pricers need list access to compute "Por invitar" counts.
+    match /supplier_altas/{altaId} {
+      allow read: if isAdminOrPricer();
+    }
+
+    // ── alta_pending ────────────────────────────────────────────────────────────
+    // Per-pricer log of handled altas (invited, removed, blocked).
+    // Admin and pricer need read across all pricers so Competencia can apply the
+    // closed-invite filter (without it, "Por invitar" inflates to raw reader counts).
+    match /alta_pending/{pricerUid} {
+      match /items/{itemId} {
+        allow read: if isAdminOrPricer();
+        allow write: if isOwner(pricerUid);
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
